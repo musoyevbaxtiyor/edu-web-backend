@@ -3,11 +3,20 @@ require('dotenv').config(); // .env faylini yuklaymiz
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db'); // Database ulanish funksiyasi
+// const cors = require('cors'); // YANGI: CORS ni import qilish
+
+// YANGI: CORS ni sozlash (Hamma manbalardan kirishga ruxsat berish)
+// app.use(cors());
+
+// Middleware (JSON ma'lumotlarini o'qish uchun)
+// app.use(express.json());
 
 // Routerlarni import qilish
 const authRoutes = require('./routes/authRoutes'); // 2. Auth Routeni chaqirish
 const userRoutes = require('./routes/userRoutes'); // YANGI: User Routelarini chaqirish
 const courseRoutes = require('./routes/courseRoutes'); // YANGI: Kurs Routelarini chaqirish
+
+const enrollmentRoutes = require('./routes/enrollmentRoutes'); // YANGI import
 
 // Server sozlamalari
 const PORT = process.env.PORT || 5000;
@@ -19,6 +28,7 @@ connectDB(); // connectDB funksiyasi tayyor bo'lgach, uni chaqirasiz
 // 2. Middleware'lar
 app.use(express.json()); // BodyParser o'rniga JSON formatidagi ma'lumotlarni qabul qilish
 app.use(express.urlencoded({ extended: true })); // Form ma'lumotlarini qabul qilish
+app.use('/api/enroll', enrollmentRoutes); // YANGI route'ni ulash
 
 // 3. CORS Sozlamasi: Frontendga ruxsat berish
 // DIQQAT: Frontend qayerda ishlayotganini aniq ko'rsatish muhim!

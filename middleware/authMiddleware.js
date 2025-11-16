@@ -1,8 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/userModel'); // Foydalanuvchini topish uchun
-
+const asyncHandler = require('express-async-handler'); // (Agar avval import qilmagan bo'lsangiz, uni qo'shing)
 // Bu funksiya JWT tokeni mavjudligini va to'g'riligini tekshiradi
-const protect = async (req, res, next) => {
+const protect = asyncHandler(
+    async (req, res, next) => {
     let token;
 
     // 1. Authorization sarlavhasini (Header) tekshirish
@@ -24,18 +25,21 @@ const protect = async (req, res, next) => {
 
             // 4. Keyingi Middleware yoki Controller funksiyasiga o'tish
             next();
-            
+
         } catch (error) {
             console.error(error);
             // Token yaroqsiz bo'lsa
             res.status(401).json({ message: 'Avtorizatsiya muvaffaqiyatsiz, token yaroqsiz.' });
+            return; // <<<<< MUHIM QO'SHIMCHA: Kod shu yerda to'xtaydi
         }
     }
 
     if (!token) {
         // Token sarlavhada mavjud bo'lmasa
         res.status(401).json({ message: 'Avtorizatsiya muvaffaqiyatsiz, token topilmadi.' });
+        return; // <<<<< MUHIM QO'SHIMCHA: Kod shu yerda to'xtaydi
     }
-};
+}
+);
 
 module.exports = { protect };
