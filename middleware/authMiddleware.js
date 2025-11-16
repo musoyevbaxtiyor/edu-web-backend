@@ -41,5 +41,17 @@ const protect = asyncHandler(
     }
 }
 );
+// edu-web-backend/middleware/authMiddleware.js
 
-module.exports = { protect };
+const restrictTo = (...roles) => {
+    return (req, res, next) => {
+        // req.user obyektida protect middleware orqali foydalanuvchi roli mavjud
+        if (!roles.includes(req.user.role)) {
+            res.status(403);
+            throw new Error(`Ruxsat yo'q. Faqat ${roles.join(', ')} bu amalni bajarishi mumkin.`);
+        }
+        next();
+    };
+};
+
+module.exports = { protect, restrictTo }; // Exportni yangilash

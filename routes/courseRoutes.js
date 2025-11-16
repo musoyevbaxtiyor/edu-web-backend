@@ -1,47 +1,45 @@
+// edu-web-backend/routes/courseRoutes.js
+
 const express = require('express');
-const { protect } = require('../middleware/authMiddleware'); 
-const { authorizeRoles } = require('../middleware/roleMiddleware'); 
-// const { createCourse, getAllCourses, updateCourse, deleteCourse } = require('../controllers/courseController'); // YANGI funksiyalarni import qilish
 const router = express.Router();
-
-// Asosiy Middleware Massivi (Admin va Teacher uchun)
-const adminOrTeacher = [protect, authorizeRoles('admin', 'teacher')];
-
-// 1. Kurs yaratish
-// router.post('/', adminOrTeacher, createCourse);
-
-// 2. Barcha kurslarni olish (Tizimga kirgan har bir kishi uchun)
-// router.get('/', protect, getAllCourses);
-
-// 3. YENGI: Kursni tahrirlash (ID orqali)
-// router.put('/:id', adminOrTeacher, updateCourse);
-
-// 4. YENGI: Kursni o'chirish (ID orqali)
-// router.delete('/:id', adminOrTeacher, deleteCourse);
-// ---------------
-// ...
 const { 
+    getCourses, 
+    getCourseById, 
     createCourse, 
-    getAllCourses, 
-    getSingleCourse, // YANGI: import
     updateCourse, 
     deleteCourse 
 } = require('../controllers/courseController');
+// restrictTo'ni import qilamiz
+const { protect, restrictTo } = require('../middleware/authMiddleware'); 
+
 // ...
 
-// 1. Kurs yaratish
-router.post('/', adminOrTeacher, createCourse);
+// Barcha kurslarni olish (Hamma kirishi mumkin)
+router.get('/', protect, getCourses); 
 
-// 2. Barcha kurslarni olish
-router.get('/', protect, getAllCourses);
+// Bitta kursni olish (Hamma kirishi mumkin)
+router.get('/:id', protect, getCourseById); 
 
-// 3. YENGI: Yagona kursni olish (Frontend tahrirlash formasini to'ldirish uchun)
-router.get('/:id', protect, getSingleCourse);
+// Kurs yaratish (Faqat O'qituvchi va Admin)
+router.post('/', 
+    protect, 
+    restrictTo('teacher', 'admin'), 
+    createCourse
+);
 
-// 4. Kursni tahrirlash
-router.put('/:id', adminOrTeacher, updateCourse);
+// Kursni tahrirlash (Faqat O'z egasi va Admin)
+// Eslatma: O'z egaligini tekshirishni Controllerda qilamiz
+router.put('/:id', 
+    protect, 
+    restrictTo('teacher', 'admin'), 
+    updateCourse
+);
 
-// 5. Kursni o'chirish
-router.delete('/:id', adminOrTeacher, deleteCourse);
+// Kursni o'chirish (Faqat O'z egasi va Admin)
+router.delete('/:id', 
+    protect, 
+    restrictTo('teacher', 'admin'), 
+    deleteCourse
+);
 
 module.exports = router;
