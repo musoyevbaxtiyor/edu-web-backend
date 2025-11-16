@@ -47,3 +47,39 @@ const registerUser = async (req, res) => {
 };
 
 module.exports = { registerUser };
+// ... (registerUser funksiyasi shu yerda tugagan) ...
+// Yuqoridagi User modelini chaqirish o'zgarishsiz qoladi
+
+const bcrypt = require('bcryptjs'); // Parolni solishtirish uchun
+
+// @desc    Foydalanuvchini tizimga kiritish
+// @route   POST /api/auth/login
+// @access  Public
+const loginUser = async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        // 1. Foydalanuvchini email orqali topish
+        const user = await User.findOne({ email });
+
+        // 2. Foydalanuvchi mavjudligini va parolni tekshirish
+        if (user && (await bcrypt.compare(password, user.password))) {
+            // Parol to'g'ri, muvaffaqiyatli javob yuboramiz
+            res.json({
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                // token: generateToken(user._id), // Keyingi qadamda Token qo'shamiz
+                message: "Tizimga muvaffaqiyatli kirdingiz!"
+            });
+        } else {
+            // Foydalanuvchi topilmasa yoki parol noto'g'ri bo'lsa
+            res.status(401).json({ message: 'Email yoki parol noto\'g\'ri.' });
+        }
+    } catch (error) {
+        res.status(500).json({ message: 'Server xatosi: ' + error.message });
+    }
+};
+
+module.exports = { registerUser, loginUser }; // Ikkala funksiyani ham eksport qilishni unutmang!
