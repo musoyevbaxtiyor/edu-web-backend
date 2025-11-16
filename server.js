@@ -6,6 +6,7 @@ const connectDB = require('./config/db'); // Database ulanish funksiyasi
 
 // Routerlarni import qilish
 const authRoutes = require('./routes/authRoutes'); // 2. Auth Routeni chaqirish
+const userRoutes = require('./routes/userRoutes'); // YANGI: User Routelarini chaqirish
 
 // Server sozlamalari
 const PORT = process.env.PORT || 5000;
@@ -31,6 +32,7 @@ app.use(cors(corsOptions));
 
 // 3. Routelarni o'rnatish
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes); // YANGI: User routelarini ulash
 
 // 4. Test Route (Tekshirish uchun oddiy route)
 app.get('/', (req, res) => {
