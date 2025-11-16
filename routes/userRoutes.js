@@ -1,10 +1,27 @@
 const express = require('express');
-const { protect } = require('../middleware/authMiddleware'); // Middleware'ni import qilish
+const { protect } = require('../middleware/authMiddleware'); 
+const { authorizeRoles } = require('../middleware/roleMiddleware'); // YANGI: Rollarni tekshirishni import qilish
 const { getUserProfile } = require('../controllers/userController');
+
 const router = express.Router();
 
-// protect middleware'ini ushbu route'ga qo'shamiz
-// Endi bu route'ga so'rov yuborish uchun Token talab qilinadi
+// 1. Profilni olish (Bu student, teacher, admin barchasi uchun ochiq)
 router.get('/profile', protect, getUserProfile); 
+
+// 2. YENGI: Faqat ADMIN kira oladigan route
+// Bu yerda ikki bosqichli himoya ishlaydi:
+// 1. protect: Tizimga kirganmi?
+// 2. authorizeRoles('admin'): Uning roli "admin" mi?
+router.get(
+    '/admin-only-test', 
+    protect, 
+    authorizeRoles('admin'), // Faqat roli 'admin' bo'lganlarga ruxsat
+    (req, res) => {
+        res.json({ 
+            message: `Xush kelibsiz Admin ${req.user.name}. Bu route himoyalangan.`,
+            role: req.user.role
+        });
+    }
+);
 
 module.exports = router;
