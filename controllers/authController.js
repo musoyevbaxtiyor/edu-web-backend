@@ -1,5 +1,5 @@
 const User = require('../models/userModel');
-
+const generateToken = require('../utils/generateToken');
 // @desc    Yangi foydalanuvchini ro'yxatdan o'tkazish
 // @route   POST /api/auth/register
 // @access  Public
@@ -34,6 +34,7 @@ const registerUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 phone: user.phone, // Javobga qo'shildi
+                token: generateToken(user._id),
                 message: "Muvaffaqiyatli ro'yxatdan o'tdingiz!"
             });
         } else {
@@ -70,7 +71,7 @@ const loginUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
-                // token: generateToken(user._id), // Keyingi qadamda Token qo'shamiz
+                token: generateToken(user._id), // Keyingi qadamda Token qo'shamiz
                 message: "Tizimga muvaffaqiyatli kirdingiz!"
             });
         } else {
