@@ -4,27 +4,36 @@ const User = require('../models/userModel');
 // @route   POST /api/auth/register
 // @access  Public
 const registerUser = async (req, res) => {
-    const { name, email, password } = req.body;
+    // YENGI MAYDONLAR QO'SHILDI
+    const { name, email, password, phone, age } = req.body; 
 
-    // 1. Maydonlar to'ldirilganligini tekshirish
-    if (!name || !email || !password) {
-        return res.status(400).json({ message: 'Iltimos, barcha maydonlarni to\'ldiring.' });
+    // 1. Barcha maydonlar to'ldirilganligini tekshirish
+    if (!name || !email || !password || !phone || !age) {
+        return res.status(400).json({ message: 'Iltimos, barcha maydonlarni (Ism, Email, Parol, Telefon, Yosh) to\'ldiring.' });
     }
 
     try {
-        // 2. Foydalanuvchi mavjudligini tekshirish
-        const userExists = await User.findOne({ email });
+        // 2. Foydalanuvchi mavjudligini tekshirish (Email orqali)
+        const userExists = await User.findOne({ $or: [{ email }, { phone }] });
         if (userExists) {
-            return res.status(400).json({ message: 'Ushbu email allaqachon ro\'yxatdan o\'tgan.' });
+            return res.status(400).json({ message: 'Ushbu email yoki telefon raqam allaqachon ro\'yxatdan o\'tgan.' });
         }
 
         // 3. Yangi foydalanuvchini yaratish
-        const user = await User.create({ name, email, password });
+        const user = await User.create({
+            name,
+            email,
+            password,
+            phone, // YANGI
+            age,     // YANGI
+        });
 
         if (user) {
             res.status(201).json({
+                _id: user._id,
                 name: user.name,
                 email: user.email,
+                phone: user.phone, // Javobga qo'shildi
                 message: "Muvaffaqiyatli ro'yxatdan o'tdingiz!"
             });
         } else {
