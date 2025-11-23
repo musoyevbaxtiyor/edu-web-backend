@@ -1,3 +1,5 @@
+// edu-web-backend/models/EnrollmentModel.js
+
 const mongoose = require('mongoose');
 
 const enrollmentSchema = new mongoose.Schema({
@@ -21,11 +23,11 @@ const enrollmentSchema = new mongoose.Schema({
         default: Date.now,
     },
     
-    // To'lov holati (kelajakda to'lov tizimi qo'shilganda foydali)
+    // To'lov holati
     paymentStatus: {
         type: String,
         enum: ['Pending', 'Completed', 'Failed'],
-        default: 'Completed', // Hozircha barcha ro'yxatdan o'tishlar "Completed" deb hisoblanadi
+        default: 'Completed', 
     },
 
     // Qo'shimcha holat (masalan, kursni tugatganligi)
@@ -36,8 +38,14 @@ const enrollmentSchema = new mongoose.Schema({
     }
 }, { timestamps: true });
 
-// Har bir talaba bitta kursga faqat bir marta ro'yxatdan o'tishi uchun indeks qo'shamiz
+// Har bir talaba bitta kursga faqat bir marta ro'yxatdan o'tishi uchun indeks
 enrollmentSchema.index({ student: 1, course: 1 }, { unique: true });
 
-const Enrollment = mongoose.model('Enrollment', enrollmentSchema);
+// MUHIM TO'G'RILASH: Model mavjudligini tekshirish
+// Agar 'Enrollment' nomli model allaqachon mavjud bo'lsa, o'shani ishlatadi.
+// Agar mavjud bo'lmasa, yangisini yaratadi. Bu OverwriteModelError ni oldini oladi.
+const Enrollment = mongoose.models.Enrollment 
+    ? mongoose.models.Enrollment 
+    : mongoose.model('Enrollment', enrollmentSchema);
+
 module.exports = Enrollment;

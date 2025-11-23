@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const { 
     getCourses, 
+    getTeacherCourses,
     getCourseById, 
     createCourse, 
     updateCourse, 
@@ -13,12 +14,16 @@ const {
 const { protect, restrictTo } = require('../middleware/authMiddleware'); 
 
 // ...
+// Bitta kursni olish (Hamma kirishi mumkin)
+router.get('/:id', protect, getCourseById); 
+
+// Joriy o'qituvchi kurslarini olish
+router.get('/teacher/me', protect, restrictTo('teacher', 'admin'), getTeacherCourses);
 
 // Barcha kurslarni olish (Hamma kirishi mumkin)
 router.get('/', protect, getCourses); 
 
-// Bitta kursni olish (Hamma kirishi mumkin)
-router.get('/:id', protect, getCourseById); 
+
 
 // Kurs yaratish (Faqat O'qituvchi va Admin)
 router.post('/', 

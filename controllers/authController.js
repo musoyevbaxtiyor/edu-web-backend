@@ -1,10 +1,14 @@
+// edu-web-backend/controllers/authController.js
+
 const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
-// @desc    Yangi foydalanuvchini ro'yxatdan o'tkazish
-// @route   POST /api/auth/register
-// @access  Public
+const bcrypt = require('bcryptjs'); // Parolni solishtirish uchun
+
+// @desc    Yangi foydalanuvchini ro'yxatdan o'tkazish
+// @route   POST /api/auth/register
+// @access  Public
 const registerUser = async (req, res) => {
-    // YENGI MAYDONLAR QO'SHILDI
+    // ... (Sizning registerUser funksiyangiz kodi o'zgarishsiz qoladi) ...
     const { name, email, password, phone, age } = req.body; 
 
     // 1. Barcha maydonlar to'ldirilganligini tekshirish
@@ -24,8 +28,8 @@ const registerUser = async (req, res) => {
             name,
             email,
             password,
-            phone, // YANGI
-            age,     // YANGI
+            phone,
+            age,
         });
 
         if (user) {
@@ -33,7 +37,7 @@ const registerUser = async (req, res) => {
                 _id: user._id,
                 name: user.name,
                 email: user.email,
-                phone: user.phone, // Javobga qo'shildi
+                phone: user.phone,
                 token: generateToken(user._id),
                 message: "Muvaffaqiyatli ro'yxatdan o'tdingiz!"
             });
@@ -47,15 +51,10 @@ const registerUser = async (req, res) => {
     }
 };
 
-module.exports = { registerUser };
-// ... (registerUser funksiyasi shu yerda tugagan) ...
-// Yuqoridagi User modelini chaqirish o'zgarishsiz qoladi
 
-const bcrypt = require('bcryptjs'); // Parolni solishtirish uchun
-
-// @desc    Foydalanuvchini tizimga kiritish
-// @route   POST /api/auth/login
-// @access  Public
+// @desc    Foydalanuvchini tizimga kiritish
+// @route   POST /api/auth/login
+// @access  Public
 const loginUser = async (req, res) => {
     const { email, password } = req.body;
 
@@ -71,7 +70,7 @@ const loginUser = async (req, res) => {
                 name: user.name,
                 email: user.email,
                 role: user.role,
-                token: generateToken(user._id), // Keyingi qadamda Token qo'shamiz
+                token: generateToken(user._id),
                 message: "Tizimga muvaffaqiyatli kirdingiz!"
             });
         } else {
@@ -83,4 +82,31 @@ const loginUser = async (req, res) => {
     }
 };
 
-module.exports = { registerUser, loginUser }; // Ikkala funksiyani ham eksport qilishni unutmang!
+// =========================================================
+// YENGI QO'SHILGAN FUNKSIYA: Token orqali foydalanuvchi ma'lumotlarini olish (GET /api/auth/me)
+// =========================================================
+// @desc    Token orqali joriy foydalanuvchi ma'lumotlarini olish
+// @route   GET /api/auth/me
+// @access  Private
+const getMe = async (req, res) => {
+    // req.user obyektini 'protect' middleware qo'shgan bo'lishi kerak.
+    // Bu obyektda foydalanuvchining hamma ma'lumotlari (shu jumladan role) mavjud.
+    
+    // Odatda parolsiz ma'lumotlarni yuborish yaxshi
+    const user = {
+        _id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        role: req.user.role, // Frontendga kerak bo'lgan ROL!
+        phone: req.user.phone,
+        age: req.user.age
+    };
+
+    res.status(200).json({ user }); // { user: {...} } formatida javob yuboramiz
+};
+
+module.exports = { 
+    registerUser, 
+    loginUser, 
+    getMe // <<<< getMe ni eksport qilishni unutmang!
+};
