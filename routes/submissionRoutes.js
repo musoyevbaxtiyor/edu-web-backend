@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { createSubmission } = require('../controllers/submissionController');
+const { createSubmission,handleSubmissionReview } = require('../controllers/submissionController');
 const { approveSubmission, getSubmissionsByLesson,getPendingSubmissionsForTeacher } = require('../controllers/submissionController'); // approveSubmission va getSubmissionsByLesson ni import qiling
+
 // protect'ni authMiddleware'dan to'g'ri import qilishni unutmang
 // const { protect } = require('../middleware/authMiddleware'); 
 const { protect, restrictTo } = require('../middleware/authMiddleware'); // <--- restrictTo qo'shildi!
@@ -18,10 +19,10 @@ router.post('/', protect, restrictTo('student'), createSubmission);
 router.get('/:lessonId', protect, restrictTo('teacher', 'admin'), getSubmissionsByLesson);
 
 // Vazifani tasdiqlash/baholash (PUT /api/submissions/approve/:submissionId)
-router.put('/approve/:submissionId', 
+router.put('/review/:submissionId', // 🔥 MARSHRUT NOMINI O'ZGARTIRDIK
     protect, 
     restrictTo('teacher', 'admin'), 
-    approveSubmission // Yangi funksiya
+    handleSubmissionReview // 🔥 HANDLER NI YANGILASH
 );
 
 // --- YANIG: O'qituvchi panel uchun marshrut ---

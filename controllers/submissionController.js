@@ -172,9 +172,70 @@ const getPendingSubmissionsForTeacher = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc   Vazifani baholash va statusni o'zgartirish (Tasdiqlash/Rad etish)
+// @route   PUT /api/submissions/review/:submissionId
+// @access  Private (Teacher/Admin)
+const handleSubmissionReview = asyncHandler(async (req, res) => {
+    const { submissionId } = req.params;
+    const { grade, feedback, status } = req.body; // 🔥 status ni qabul qilamiz ('approved' yoki 'rejected')
+
+    if (!submissionId || !status || !['approved', 'rejected'].includes(status)) {
+        res.status(400);
+        throw new Error("Submission ID, status ('approved' yoki 'rejected') va Grade kiritilishi shart.");
+    }
+    
+    // 1. Submissionni topish
+    const submission = await Submission.findById(submissionId);
+
+    if (!submission) {
+        res.status(404);
+        throw new Error("Topshiriq yozuvi topilmadi.");
+    }
+
+    // 🔥 Progress uchun yangi statusni aniqlash
+    let newProgressStatus;
+    if (status === 'approved') {
+        newProgressStatus = 'completed'; // Tasdiqlansa, keyingi dars ochiladi
+    } else if (status === 'rejected') {
+        newProgressStatus = 'started'; // Rad etilsa, talaba qayta topshirishi uchun 'started' holatiga qaytadi
+    } else {
+        res.status(400);
+        throw new Error("Noto'g'ri status qiymati.");
+    }
+
+    // 2. Submissionni yangilash
+    const updatedSubmission = await Submission.findByIdAndUpdate(submissionId, {
+        status: status, // 'approved' yoki 'rejected'
+        grade: grade, 
+        feedback: feedback,
+        reviewedBy: req.user.id // Kim tekshirganini saqlash
+    }, { new: true });
+
+    // 3. PROGRESS STATUSINI YANGILASH
+    const progress = await Progress.findOneAndUpdate(
+        { user: submission.user, lesson: submission.lesson }, 
+        { 
+            status: newProgressStatus, // 🔥 'completed' yoki 'started' ga o'rnatiladi
+            reviewedBy: req.user.id 
+        },
+        { new: true } 
+    );
+    
+    const message = status === 'approved' 
+        ? 'Vazifa muvaffaqiyatli tasdiqlandi. Talaba keyingi darsga o\'tdi.'
+        : 'Vazifa rad etildi. Talaba qayta topshirishi mumkin.';
+
+    res.status(200).json({
+        message: message,
+        submission: updatedSubmission,
+        progress: progress
+    });
+});
+
 module.exports = {
     createSubmission,
-    approveSubmission, // 🔥 YANGI FUNKSIYANI EKSPORT QILAMIZ
-    getSubmissionsByLesson, // 🔥 YANGI FUNKSIYANI EKSPORT QILAMIZ
-    getPendingSubmissionsForTeacher // 🔥 EKSPORT QILAMIZ
+    approveSubmission: handleSubmissionReview, // Eski funksiya nomini yangisiga almashtirdik (Agar eskisi ishlatilmasa uni o'chirish kerak)
+    handleSubmissionReview, // 🔥 YANGI FUNKSIYANI EKSPORT QILAMIZ
+    getSubmissionsByLesson,
+    getPendingSubmissionsForTeacher 
 };
