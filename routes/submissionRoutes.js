@@ -1,13 +1,33 @@
 const express = require('express');
 const router = express.Router();
 const { createSubmission } = require('../controllers/submissionController');
+const { approveSubmission, getSubmissionsByLesson,getPendingSubmissionsForTeacher } = require('../controllers/submissionController'); // approveSubmission va getSubmissionsByLesson ni import qiling
 // protect'ni authMiddleware'dan to'g'ri import qilishni unutmang
-const { protect } = require('../middleware/authMiddleware'); 
-
-// Vazifani topshirish (POST /api/submissions)
-router.post('/', protect, createSubmission); 
+// const { protect } = require('../middleware/authMiddleware'); 
+const { protect, restrictTo } = require('../middleware/authMiddleware'); // <--- restrictTo qo'shildi!
+// // Vazifani topshirish (POST /api/submissions)
+// router.post('/', protect, createSubmission); 
 
 // Kerakli boshqa marshrutlar (Masalan: GET barcha topshiriqlar)
 // router.get('/', protect, restrictTo('teacher', 'admin'), getSubmissions);
 
+// Vazifani topshirish (POST /api/submissions)
+router.post('/', protect, restrictTo('student'), createSubmission); 
+
+// Vazifalarni dars bo'yicha olish (Faqat O'qituvchi/Admin ko'ra oladi)
+router.get('/:lessonId', protect, restrictTo('teacher', 'admin'), getSubmissionsByLesson);
+
+// Vazifani tasdiqlash/baholash (PUT /api/submissions/approve/:submissionId)
+router.put('/approve/:submissionId', 
+    protect, 
+    restrictTo('teacher', 'admin'), 
+    approveSubmission // Yangi funksiya
+);
+
+// --- YANIG: O'qituvchi panel uchun marshrut ---
+router.get('/teacher/pending', 
+    protect, 
+    restrictTo('teacher', 'admin'), 
+    getPendingSubmissionsForTeacher // 🔥 Vazifalarni olish
+);
 module.exports = router;

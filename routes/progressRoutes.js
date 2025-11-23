@@ -9,6 +9,6 @@ router.route('/')
 
 // Keyinchalik:
 // router.route('/:id/complete')
-//     .put(protect, markLessonCompleted);
+// .put(protect, markLessonCompleted);
 
 module.exports = router;

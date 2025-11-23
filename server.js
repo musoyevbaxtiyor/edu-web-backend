@@ -3,6 +3,7 @@ require('dotenv').config(); // .env faylini yuklaymiz
 const express = require('express');
 const cors = require('cors');
 const connectDB = require('./config/db'); // Database ulanish funksiyasi
+const submissionRouter = require('./routes/submissionRoutes'); // Import
 // const cors = require('cors'); // YANGI: CORS ni import qilish
 
 // YANGI: CORS ni sozlash (Hamma manbalardan kirishga ruxsat berish)
@@ -32,6 +33,7 @@ app.use('/api/enroll', enrollmentRoutes); // YANGI route'ni ulash
 app.use('/api/lessons', lessonRoutes); // <<< YANGI ROUTE
 app.use('/api/reviews', require('./routes/reviewRoutes')); // <<< BU QATOR MAVJUDMI?
 app.use('/api/lessons', require('./routes/lessonRoutes'));
+app.use('/api/submissions', submissionRouter); // 🔥 BU QATOR MAVJUDLIGINI TEKSHIRING
 // server.js
 // ... (boshqa importlar)
 // Submission (Vazifa topshiriqlari) marshrutini ulash
