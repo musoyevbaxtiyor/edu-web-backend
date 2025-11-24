@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { createSubmission,handleSubmissionReview } = require('../controllers/submissionController');
 const { approveSubmission, getSubmissionsByLesson,getPendingSubmissionsForTeacher } = require('../controllers/submissionController'); // approveSubmission va getSubmissionsByLesson ni import qiling
-
+const { uploadSubmissionFile } = require('../middleware/submissionMiddleware'); // 🔥 IMPORT QILAMIZ
 // protect'ni authMiddleware'dan to'g'ri import qilishni unutmang
 // const { protect } = require('../middleware/authMiddleware'); 
 const { protect, restrictTo } = require('../middleware/authMiddleware'); // <--- restrictTo qo'shildi!
@@ -13,7 +13,12 @@ const { protect, restrictTo } = require('../middleware/authMiddleware'); // <---
 // router.get('/', protect, restrictTo('teacher', 'admin'), getSubmissions);
 
 // Vazifani topshirish (POST /api/submissions)
-router.post('/', protect, restrictTo('student'), createSubmission); 
+router.post('/', 
+    protect, 
+    restrictTo('student'), 
+    uploadSubmissionFile, // 🔥 MUHIM: MULTER ENDI BIRINCHI KELADI
+    createSubmission      // 🔥 VA Controller Endi Ikkinchi KELADI
+); 
 
 // Vazifalarni dars bo'yicha olish (Faqat O'qituvchi/Admin ko'ra oladi)
 router.get('/:lessonId', protect, restrictTo('teacher', 'admin'), getSubmissionsByLesson);

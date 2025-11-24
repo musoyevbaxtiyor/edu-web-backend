@@ -5,26 +5,114 @@ const Progress = require('../models/progressModel'); // Progress modelini import
 const Course = require('../models/courseModel'); // Kurs modelini import qilish shart
 // ...
 // Vazifa: POST /api/submissions
-const createSubmission = asyncHandler(async (req, res) => {
-    // protect middleware'dan kelgan userId
-    const userId = req.user.id; 
-    const { lessonId, submissionText, courseId } = req.body; // Frontenddan courseId ham kelishi kerak
-    
-    if (!lessonId || !submissionText || !courseId) { // courseId ni tekshirishni qo'shdik
-        res.status(400);
-        throw new Error("Dars IDsi, kurs IDsi va topshiriq matni kiritilishi shart.");
-    }
+// const createSubmission = asyncHandler(async (req, res) => {
+//     // protect middleware'dan kelgan userId
+//     const userId = req.user.id; 
+//     const { lessonId, submissionText, courseId } = req.body; // Frontenddan courseId ham kelishi kerak
+//     
+//     if (!lessonId || !submissionText || !courseId) { // courseId ni tekshirishni qo'shdik
+//         res.status(400);
+//         throw new Error("Dars IDsi, kurs IDsi va topshiriq matni kiritilishi shart.");
+//     }
 
-    // 1. Yangi topshiriqni yaratish (yoki eskini yangilash - faqat bitta topshiriq bo'lishi kerak)
+//     // 1. Yangi topshiriqni yaratish (yoki eskini yangilash - faqat bitta topshiriq bo'lishi kerak)
+//     const submission = await Submission.findOneAndUpdate(
+//         { user: userId, lesson: lessonId },
+//         { 
+//             submissionText: submissionText,
+//             status: 'submitted' 
+//         },
+//         { new: true, upsert: true } // Topilmasa yaratadi, topsa yangilaydi
+//     );
+
+//     // 2. 🔥 PROGRESS STATUSINI YANGILASH (yoki YARATISH) 🔥
+//     const filter = { user: userId, lesson: lessonId, course: courseId };
+
+//     const update = { 
+//         status: 'submitted',
+//         // Agar yangi yaratilayotgan bo'lsa ham, bu qiymatlar uzatiladi
+//         $setOnInsert: { // Faqat yangi yozuv yaratilganda ishlaydigan maydonlar
+//              user: userId,
+//              lesson: lessonId,
+//              course: courseId
+//         }
+//     };
+
+//     const progress = await Progress.findOneAndUpdate(
+//         filter,
+//         update,
+//         { 
+//             new: true, 
+//             upsert: true, // Agar topilmasa yaratadi
+//             setDefaultsOnInsert: true // Default qiymatlarni ham ishlatish
+//         }
+//     );
+
+//     // // 2. 🔥 PROGRESS STATUSINI YANGILASH 🔥
+//     // // Progress modelidagi statusni 'submitted' ga o'zgartiramiz
+//     // const progress = await Progress.findOneAndUpdate(
+//     //     { user: userId, lesson: lessonId, course: courseId },
+//     //     { 
+//     //         status: 'submitted',
+//     //         // Topshirish sanasini progressga saqlash ham mumkin
+//     //         updatedAt: Date.now() 
+//     //     },
+//     //     { new: true, upsert: true }
+//     // );
+
+//     res.status(201).json({
+//         success: true,
+//         message: 'Vazifa muvaffaqiyatli topshirildi. O\'qituvchi tekshirishini kuting.',
+//         submission: submission,
+//         progress: progress
+//     });
+// });
+
+// ------------------------------------------------------------
+// Vazifa: POST /api/submissions
+const createSubmission = asyncHandler(async (req, res) => {
+
+    console.log("Fayl:", req.file);
+    console.log("Body:", req.body);
+
+
+
+    // const userId = req.user.id; 
+    
+// 🔥 TO'G'RILASH: req.body mavjudligini kafolatlang
+    if (!req.body) {
+         res.status(400);
+         throw new Error("So'rovda ma'lumotlar mavjud emas (req.body undefined).");
+    }
+
+    const userId = req.user.id; 
+    
+    // Matnli maydonlarni to'g'ri olish
+    // req.body dan 'lessonId', 'courseId', 'submissionComment' ni oling
+    const { lessonId, courseId, submissionComment } = req.body; // 🔥 Xato bo'lgan qator
+
+    // Fayl manzilini olish
+    const submissionUrl = req.file ? `/uploads/submissions/${req.file.filename}` : null;
+    
+    if (!lessonId || !courseId || !submissionUrl) {
+        // Multer faylni yuklagan bo'lsa ham, keyingi tekshiruv 400 qaytaradi
+        res.status(400);
+        throw new Error("Dars IDsi, Kurs IDsi va fayl kiritilishi shart.");
+    }
+//----------------------------------
+    // 1. Yangi topshiriqni yaratish/yangilash
     const submission = await Submission.findOneAndUpdate(
         { user: userId, lesson: lessonId },
         { 
-            submissionText: submissionText,
+            submissionUrl: submissionUrl, // 🔥 Yangi maydon
+            submissionComment: submissionComment, // Opsional izoh
             status: 'submitted' 
         },
-        { new: true, upsert: true } // Topilmasa yaratadi, topsa yangilaydi
+        { new: true, upsert: true }
     );
-
+    
+    // 2. PROGRESS STATUSINI YANGILASH (oldingidek qoladi)
+    // ...
     // 2. 🔥 PROGRESS STATUSINI YANGILASH (yoki YARATISH) 🔥
     const filter = { user: userId, lesson: lessonId, course: courseId };
 
@@ -47,26 +135,17 @@ const createSubmission = asyncHandler(async (req, res) => {
             setDefaultsOnInsert: true // Default qiymatlarni ham ishlatish
         }
     );
-
-    // // 2. 🔥 PROGRESS STATUSINI YANGILASH 🔥
-    // // Progress modelidagi statusni 'submitted' ga o'zgartiramiz
-    // const progress = await Progress.findOneAndUpdate(
-    //     { user: userId, lesson: lessonId, course: courseId },
-    //     { 
-    //         status: 'submitted',
-    //         // Topshirish sanasini progressga saqlash ham mumkin
-    //         updatedAt: Date.now() 
-    //     },
-    //     { new: true, upsert: true }
-    // );
-
-    res.status(201).json({
-        success: true,
-        message: 'Vazifa muvaffaqiyatli topshirildi. O\'qituvchi tekshirishini kuting.',
-        submission: submission,
-        progress: progress
-    });
+    
+    res.status(201).json({
+        success: true,
+        message: 'Vazifa muvaffaqiyatli topshirildi.',
+        submission: submission
+    });
 });
+
+
+
+// ---------------------------------------------------------
 
 // @desc   Vazifani tasdiqlash va baholash (O'qituvchi)
 // @route   PUT /api/submissions/approve/:submissionId

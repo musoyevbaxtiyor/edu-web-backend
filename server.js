@@ -18,7 +18,7 @@ const userRoutes = require('./routes/userRoutes'); // YANGI: User Routelarini ch
 const courseRoutes = require('./routes/courseRoutes'); // YANGI: Kurs Routelarini chaqirish
 const lessonRoutes = require('./routes/lessonRoutes'); // <<< IMPORT QILISH
 const enrollmentRoutes = require('./routes/enrollmentRoutes'); // YANGI import
-
+const path = require('path'); // Path modulini import qiling
 // Server sozlamalari
 const PORT = process.env.PORT || 5000;
 const app = express();
@@ -27,6 +27,7 @@ const app = express();
 connectDB(); // connectDB funksiyasi tayyor bo'lgach, uni chaqirasiz
 
 // 2. Middleware'lar
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use(express.json()); // BodyParser o'rniga JSON formatidagi ma'lumotlarni qabul qilish
 app.use(express.urlencoded({ extended: true })); // Form ma'lumotlarini qabul qilish
 app.use('/api/enroll', enrollmentRoutes); // YANGI route'ni ulash

@@ -14,10 +14,14 @@ const submissionSchema = new mongoose.Schema({
         required: [true, "Dars IDsi bo'lishi shart."]
     },
     // Topshiriq matni (link yoki qisqa izoh)
-    submissionText: {
+    // 🔥 submissionText o'rniga URL manzilini saqlash
+    submissionUrl: { 
         type: String,
-        required: [true, "Topshiriq matni yoki havolasi bo'lishi shart."]
+        required: [true, "Topshiriq matni yoki fayl manziliga ega bo'lishi shart."]
     },
+    
+    // Vazifa matni o'rniga, agar talaba qisqa izoh yozsa (opsional)
+    submissionComment: String,
     // Topshiriq statusi (Tekshirish/Tasdiqlash mantiqi uchun)
     status: {
         type: String,
