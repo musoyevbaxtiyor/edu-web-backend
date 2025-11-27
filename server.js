@@ -1,40 +1,34 @@
-// Serverni ishga tushirish uchun asosiy fayl
-require('dotenv').config(); // .env faylini yuklaymiz
+require('dotenv').config(); // .env faylini yuklash
 const express = require('express');
 const cors = require('cors');
-const connectDB = require('./config/db'); // Database ulanish funksiyasi
-const submissionRouter = require('./routes/submissionRoutes'); // Import
-// const cors = require('cors'); // YANGI: CORS ni import qilish
+const path = require('path');
 
-// YANGI: CORS ni sozlash (Hamma manbalardan kirishga ruxsat berish)
-// app.use(cors());
+const connectDB = require('./config/db'); // DB ulanish
+const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
+const courseRoutes = require('./routes/courseRoutes');
+const lessonRoutes = require('./routes/lessonRoutes');
+const enrollmentRoutes = require('./routes/enrollmentRoutes');
+const submissionRoutes = require('./routes/submissionRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
+const progressRoutes = require('./routes/progressRoutes');
 
-// Middleware (JSON ma'lumotlarini o'qish uchun)
-// app.use(express.json());
+const PORT = process.env.PORT || 10000;
+const HOST = '0.0.0.0';
 
-// Routerlarni import qilish
-const authRoutes = require('./routes/authRoutes'); // 2. Auth Routeni chaqirish
-const userRoutes = require('./routes/userRoutes'); // YANGI: User Routelarini chaqirish
-const courseRoutes = require('./routes/courseRoutes'); // YANGI: Kurs Routelarini chaqirish
-const lessonRoutes = require('./routes/lessonRoutes'); // <<< IMPORT QILISH
-const enrollmentRoutes = require('./routes/enrollmentRoutes'); // YANGI import
-const path = require('path'); // Path modulini import qiling
-// Server sozlamalari
-const PORT = process.env.PORT || 5000;
 const app = express();
 
-// 1. Database ulanish
-connectDB(); // connectDB funksiyasi tayyor bo'lgach, uni chaqirasiz
-// 🔥 CORS Sozlamalari 🔥
+// 1. DB ga ulanish
+connectDB();
+
+// 2. CORS sozlamalari
 const allowedOrigins = [
-    'http://localhost:3000', // Test uchun lokal adres
-    // 🔥 Netlify tomonidan berilgan to'liq va yakuniy Frontend manzilingizni kiriting!
-    'https://edu-web-musoyev.netlify.app' 
+    'http://localhost:3000',
+    'https://edu-web-musoyev.netlify.app'
 ];
 
 const corsOptions = {
-    origin: function (origin, callback) {
-        // Agar so'rov yuboruvchi origin allowedOrigins ro'yxatida bo'lsa yoki origin mavjud bo'lmasa (masalan, Postman so'rovi)
+    origin: function(origin, callback) {
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
@@ -42,45 +36,32 @@ const corsOptions = {
         }
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true, // Agar siz frontend/backend o'rtasida cookie/sessiya yubormoqchi bo'lsangiz
+    credentials: true,
 };
+
 app.use(cors(corsOptions));
 
-// 2. Middleware'lar
+// 3. Middleware
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use(express.json()); // BodyParser o'rniga JSON formatidagi ma'lumotlarni qabul qilish
-app.use(express.urlencoded({ extended: true })); // Form ma'lumotlarini qabul qilish
-app.use('/api/enroll', enrollmentRoutes); // YANGI route'ni ulash
-app.use('/api/lessons', lessonRoutes); // <<< YANGI ROUTE
-app.use('/api/reviews', require('./routes/reviewRoutes')); // <<< BU QATOR MAVJUDMI?
-app.use('/api/lessons', require('./routes/lessonRoutes'));
-app.use('/api/submissions', submissionRouter); // 🔥 BU QATOR MAVJUDLIGINI TEKSHIRING
-// server.js
-// ... (boshqa importlar)
-// Submission (Vazifa topshiriqlari) marshrutini ulash
-app.use('/api/submissions', require('./routes/submissionRoutes')); 
-app.use('/api/progress', require('./routes/progressRoutes')); // <<< BU QATORNI QO'SHING
-// ... (boshqa marshrutlar va middlewarelar)
-// 3. CORS Sozlamasi: Frontendga ruxsat berish
-// DIQQAT: Frontend qayerda ishlayotganini aniq ko'rsatish muhim!
-// Masalan, siz VS Code'ning Live Server'ida ishlayotgan bo'lsangiz, u 127.0.0.1:5500 da ishlaydi.
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-
-// 3. Routelarni o'rnatish
+// 4. Routelarni ulash
 app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes); // YANGI: User routelarini ulash
-app.use('/api/courses', courseRoutes); // YANGI: Kurs routelarini ulash
-app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/users', userRoutes);
+app.use('/api/courses', courseRoutes);
+app.use('/api/lessons', lessonRoutes);
+app.use('/api/enroll', enrollmentRoutes);
+app.use('/api/submissions', submissionRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/progress', progressRoutes);
 
-// 4. Test Route (Tekshirish uchun oddiy route)
+// 5. Test route
 app.get('/', (req, res) => {
     res.send(`Server ${PORT} portida ishlamoqda. Backend tayyor.`);
 });
 
-// 5. Asosiy Route'larni ulash (Routes tayyor bo'lgach)
-// const authRoutes = require('./routes/authRoutes');
-// app.use('/api/auth', authRoutes);
-
-
 // 6. Serverni ishga tushirish
-app.listen(PORT, () => console.log(`🚀 Server ${PORT}-portda ishga tushdi!`));
+app.listen(PORT, HOST, () => {
+    console.log(`🚀 Server ${HOST}:${PORT} portda ishga tushdi!`);
+});
