@@ -1,4 +1,4 @@
-const Enrollment = require('../models/EnrollmentModel'); // E va M ni katta qildik
+const Enrollment = require('../models/enrollment_temp'); // E va M ni katta qildik
 const Course = require('../models/courseModel'); // Kurs ma'lumotlarini tekshirish uchun
 const asyncHandler = require('express-async-handler'); // Asinxron xatolarni boshqarish uchun
 

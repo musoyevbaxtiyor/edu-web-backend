@@ -4,7 +4,7 @@ const asyncHandler = require('express-async-handler');
 // const Lesson = require('../models/lessonModel');
 const Course = require('../models/courseModel');
 // const Progress = require('../models/progressModel'); 
-const Enrollment = require('../models/enrollmentModel'); // MUHIM: Enrollmentni tekshirish uchun qo'shdik
+const Enrollment = require('../models/enrollment_temp'); // MUHIM: Enrollmentni tekshirish uchun qo'shdik
 
 // @desc    Kurs uchun yangi dars yaratish
 // @route   POST /api/lessons
