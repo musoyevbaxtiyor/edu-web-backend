@@ -25,6 +25,26 @@ const app = express();
 
 // 1. Database ulanish
 connectDB(); // connectDB funksiyasi tayyor bo'lgach, uni chaqirasiz
+// 🔥 CORS Sozlamalari 🔥
+const allowedOrigins = [
+    'http://localhost:3000', // Test uchun lokal adres
+    // 🔥 Netlify tomonidan berilgan to'liq va yakuniy Frontend manzilingizni kiriting!
+    'https://edu-web-musoyev.netlify.app' 
+];
+
+const corsOptions = {
+    origin: function (origin, callback) {
+        // Agar so'rov yuboruvchi origin allowedOrigins ro'yxatida bo'lsa yoki origin mavjud bo'lmasa (masalan, Postman so'rovi)
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Bu manzil CORS siyosati tomonidan bloklangan.'), false);
+        }
+    },
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    credentials: true, // Agar siz frontend/backend o'rtasida cookie/sessiya yubormoqchi bo'lsangiz
+};
+app.use(cors(corsOptions));
 
 // 2. Middleware'lar
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -45,26 +65,6 @@ app.use('/api/progress', require('./routes/progressRoutes')); // <<< BU QATORNI 
 // DIQQAT: Frontend qayerda ishlayotganini aniq ko'rsatish muhim!
 // Masalan, siz VS Code'ning Live Server'ida ishlayotgan bo'lsangiz, u 127.0.0.1:5500 da ishlaydi.
 
-// 🔥 CORS Sozlamalari 🔥
-const allowedOrigins = [
-    'http://localhost:3000', // Test uchun lokal adres
-    // 🔥 Netlify tomonidan berilgan to'liq va yakuniy Frontend manzilingizni kiriting!
-    'https://edu-web-musoyev.netlify.app/' 
-];
-
-const corsOptions = {
-    origin: function (origin, callback) {
-        // Agar so'rov yuboruvchi origin allowedOrigins ro'yxatida bo'lsa yoki origin mavjud bo'lmasa (masalan, Postman so'rovi)
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Bu manzil CORS siyosati tomonidan bloklangan.'), false);
-        }
-    },
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-    credentials: true, // Agar siz frontend/backend o'rtasida cookie/sessiya yubormoqchi bo'lsangiz
-};
-app.use(cors(corsOptions));
 
 // 3. Routelarni o'rnatish
 app.use('/api/auth', authRoutes);
