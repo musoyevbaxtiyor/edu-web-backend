@@ -62,6 +62,15 @@ app.get('/', (req, res) => {
 });
 
 // 6. Serverni ishga tushirish
-app.listen(PORT, HOST, () => {
-    console.log(`🚀 Server ${HOST}:${PORT} portda ishga tushdi!`);
+// 🔥 'const server =' qismini qo'shing.
+
+const server = app.listen(PORT, HOST, () => {
+    console.log(`🚀 Server ${HOST}:${PORT} portda ishga tushdi!`);
 });
+
+// 🔥 KeepAliveTimeout va HeadersTimeoutni oshirish
+const extendedTimeout = 120000; 
+
+// 🔥 Endi 'server' e'lon qilingan va ishlaydi!
+server.keepAliveTimeout = extendedTimeout; 
+server.headersTimeout = extendedTimeout;
