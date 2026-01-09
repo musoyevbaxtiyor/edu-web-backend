@@ -311,10 +311,41 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Student o'z submission'ini olish (bitta lesson uchun)
+// @route   GET /api/submissions/my/:lessonId
+// @access  Private (Student)
+const getMySubmission = asyncHandler(async (req, res) => {
+    const { lessonId } = req.params;
+    const userId = req.user.id;
+
+    // Eng yangi submission'ni topish
+    const submissions = await Submission.find({ 
+        user: userId, 
+        lesson: lessonId 
+    })
+    .populate('lesson', 'title order')
+    .sort({ createdAt: -1 }) // Eng yangi submission
+    .limit(1);
+
+    const submission = submissions.length > 0 ? submissions[0] : null;
+
+    if (!submission) {
+        return res.status(200).json({ 
+            submission: null,
+            message: 'Bu dars uchun topshirish topilmadi.' 
+        });
+    }
+
+    res.status(200).json({ 
+        submission: submission
+    });
+});
+
 module.exports = {
     createSubmission,
     approveSubmission: handleSubmissionReview, // Eski funksiya nomini yangisiga almashtirdik (Agar eskisi ishlatilmasa uni o'chirish kerak)
     handleSubmissionReview, // 🔥 YANGI FUNKSIYANI EKSPORT QILAMIZ
     getSubmissionsByLesson,
-    getPendingSubmissionsForTeacher 
+    getPendingSubmissionsForTeacher,
+    getMySubmission
 };

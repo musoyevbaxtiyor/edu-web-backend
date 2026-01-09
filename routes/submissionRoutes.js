@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createSubmission,handleSubmissionReview } = require('../controllers/submissionController');
+const { createSubmission,handleSubmissionReview, getMySubmission } = require('../controllers/submissionController');
 const { approveSubmission, getSubmissionsByLesson,getPendingSubmissionsForTeacher } = require('../controllers/submissionController'); // approveSubmission va getSubmissionsByLesson ni import qiling
 const { uploadSubmissionFile } = require('../middleware/submissionMiddleware'); // 🔥 IMPORT QILAMIZ
 // protect'ni authMiddleware'dan to'g'ri import qilishni unutmang
@@ -36,4 +36,12 @@ router.get('/teacher/pending',
     restrictTo('teacher', 'admin'), 
     getPendingSubmissionsForTeacher // 🔥 Vazifalarni olish
 );
+
+// --- Student o'z submission'ini olish ---
+router.get('/my/:lessonId', 
+    protect, 
+    restrictTo('student'), 
+    getMySubmission
+);
+
 module.exports = router;
