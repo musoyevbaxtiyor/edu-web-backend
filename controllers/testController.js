@@ -1,4 +1,5 @@
 const Test = require('../models/testModel');
+const TestResult = require('../models/testResultModel');
 const asyncHandler = require('express-async-handler');
 
 // @desc    Barcha testlarni olish
@@ -241,6 +242,7 @@ const deleteTest = asyncHandler(async (req, res) => {
 // @access  Private
 const checkTestAnswer = asyncHandler(async (req, res) => {
     const { answerIndex } = req.body;
+    const userId = req.user._id;
     const test = await Test.findById(req.params.id);
     
     if (!test) {
@@ -259,11 +261,31 @@ const checkTestAnswer = asyncHandler(async (req, res) => {
     
     const isCorrect = answerIndex === test.correctAnswer;
     
+    // Ball hisoblash (easy: 1, medium: 2, hard: 3)
+    const scoreMap = { easy: 1, medium: 2, hard: 3 };
+    const score = isCorrect ? scoreMap[test.difficulty] || 1 : 0;
+    
+    // Natijani saqlash yoki yangilash
+    await TestResult.findOneAndUpdate(
+        { student: userId, test: test._id },
+        {
+            student: userId,
+            test: test._id,
+            selectedAnswer: answerIndex,
+            isCorrect: isCorrect,
+            score: score,
+            lesson: test.lessonId || null,
+            course: test.courseId || null
+        },
+        { upsert: true, new: true }
+    );
+    
     res.status(200).json({
         success: true,
         isCorrect,
         correctAnswer: test.correctAnswer,
-        explanation: test.explanation
+        explanation: test.explanation,
+        score: score
     });
 });
 

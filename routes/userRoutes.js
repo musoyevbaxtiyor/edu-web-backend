@@ -12,7 +12,10 @@ router.get('/profile', protect, getUserProfile);
 router.put('/profile', protect, updateUserProfile);
 
 // 3. Foydalanuvchi statistikalarini olish
-router.get('/statistics', protect, getUserStatistics); 
+router.get('/statistics', protect, getUserStatistics);
+
+// 4. Barcha studentlar reytingini olish
+router.get('/ratings', protect, getStudentsRatings); 
 
 // 2. YENGI: Faqat ADMIN kira oladigan route
 // Bu yerda ikki bosqichli himoya ishlaydi:

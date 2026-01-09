@@ -228,4 +228,114 @@ const getUserStatistics = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { getUserProfile, updateUserProfile, getUserStatistics };
+// @desc    Barcha studentlar reytingini olish
+// @route   GET /api/users/ratings
+// @access  Private (Hamma ko'ra oladi)
+const getStudentsRatings = asyncHandler(async (req, res) => {
+    try {
+        // 1. Barcha studentlarni olish
+        const students = await User.find({ role: 'student' })
+            .select('_id name email avatar')
+            .sort({ name: 1 });
+
+        // 2. Har bir student uchun ballarni hisoblash
+        const ratings = await Promise.all(
+            students.map(async (student) => {
+                const studentId = student._id;
+
+                // A) Submission'lardan olingan ballar (har bir approved submission uchun grade)
+                const submissions = await Submission.find({
+                    user: studentId,
+                    status: 'approved'
+                }).select('grade lesson');
+
+                let submissionScore = 0;
+                const lessonScores = new Map(); // Har bir dars uchun maksimal ballni saqlash
+
+                submissions.forEach(sub => {
+                    if (sub.grade !== undefined && sub.grade !== null) {
+                        const lessonId = sub.lesson.toString();
+                        const currentMax = lessonScores.get(lessonId) || 0;
+                        if (sub.grade > currentMax) {
+                            lessonScores.set(lessonId, sub.grade);
+                        }
+                    }
+                });
+
+                // Har bir darsdan maksimal ballni yig'ish
+                submissionScore = Array.from(lessonScores.values()).reduce((sum, grade) => sum + grade, 0);
+
+                // B) Test natijalaridan olingan ballar (har bir test uchun score)
+                const testResults = await TestResult.find({
+                    student: studentId,
+                    isCorrect: true
+                }).select('score lesson');
+
+                let testScore = 0;
+                testResults.forEach(result => {
+                    if (result.score !== undefined && result.score !== null) {
+                        testScore += result.score;
+                    }
+                });
+
+                // C) Umumiy ball (submission + test ballari)
+                const totalScore = submissionScore + testScore;
+
+                // D) Qo'shimcha ma'lumotlar
+                const completedLessons = await Progress.countDocuments({
+                    user: studentId,
+                    status: 'completed'
+                });
+
+                const totalTests = await TestResult.countDocuments({
+                    student: studentId
+                });
+
+                const correctTests = await TestResult.countDocuments({
+                    student: studentId,
+                    isCorrect: true
+                });
+
+                return {
+                    student: {
+                        _id: student._id,
+                        name: student.name,
+                        email: student.email,
+                        avatar: student.avatar
+                    },
+                    submissionScore: submissionScore,
+                    testScore: testScore,
+                    totalScore: totalScore,
+                    completedLessons: completedLessons,
+                    totalTests: totalTests,
+                    correctTests: correctTests,
+                    testAccuracy: totalTests > 0 ? Math.round((correctTests / totalTests) * 100) : 0
+                };
+            })
+        );
+
+        // 3. Umumiy ball bo'yicha saralash (eng yuqoridan pastga)
+        ratings.sort((a, b) => b.totalScore - a.totalScore);
+
+        // 4. Reyting o'rni qo'shish
+        ratings.forEach((rating, index) => {
+            rating.rank = index + 1;
+        });
+
+        res.status(200).json({
+            success: true,
+            count: ratings.length,
+            ratings: ratings
+        });
+
+    } catch (error) {
+        console.error('Reyting yuklashda xato:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Reyting yuklashda xato yuz berdi.',
+            ratings: []
+        });
+    }
+});
+
+module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings };
