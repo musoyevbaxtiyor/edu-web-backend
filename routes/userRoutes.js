@@ -1,12 +1,15 @@
 const express = require('express');
 const { protect } = require('../middleware/authMiddleware'); 
 const { authorizeRoles } = require('../middleware/roleMiddleware'); // YANGI: Rollarni tekshirishni import qilish
-const { getUserProfile } = require('../controllers/userController');
+const { getUserProfile, updateUserProfile } = require('../controllers/userController');
 
 const router = express.Router();
 
 // 1. Profilni olish (Bu student, teacher, admin barchasi uchun ochiq)
-router.get('/profile', protect, getUserProfile); 
+router.get('/profile', protect, getUserProfile);
+
+// 2. Profilni yangilash (Bu student, teacher, admin barchasi uchun ochiq)
+router.put('/profile', protect, updateUserProfile); 
 
 // 2. YENGI: Faqat ADMIN kira oladigan route
 // Bu yerda ikki bosqichli himoya ishlaydi:
