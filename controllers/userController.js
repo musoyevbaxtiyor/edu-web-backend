@@ -1,4 +1,7 @@
 const User = require('../models/userModel');
+const Enrollment = require('../models/EnrollmentModel');
+const Progress = require('../models/progressModel');
+const Lesson = require('../models/lessonModel');
 const asyncHandler = require('express-async-handler');
 
 // @desc    Tizimga kirgan foydalanuvchi profilini olish
@@ -145,4 +148,84 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     }
 });
 
-module.exports = { getUserProfile, updateUserProfile };
+// @desc    Foydalanuvchi statistikalarini olish
+// @route   GET /api/users/statistics
+// @access  Private
+const getUserStatistics = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const userRole = req.user.role;
+
+    // Faqat studentlar uchun statistika
+    if (userRole !== 'student') {
+        return res.status(200).json({
+            courses: 0,
+            completed: 0,
+            progress: 0,
+            certificates: 0
+        });
+    }
+
+    try {
+        // 1. Ro'yxatdan o'tgan kurslar
+        const enrollments = await Enrollment.find({ student: userId })
+            .populate('course', '_id title');
+
+        const totalCourses = enrollments.length;
+        
+        // 2. Tugallangan kurslar (completionStatus === 'Completed')
+        const completedCourses = enrollments.filter(
+            e => e.completionStatus === 'Completed'
+        ).length;
+
+        // 3. Umumiy progress hisoblash
+        let totalProgress = 0;
+        let coursesWithProgress = 0;
+
+        for (const enrollment of enrollments) {
+            const courseId = enrollment.course._id;
+            
+            // Kursdagi jami darslar soni
+            const totalLessons = await Lesson.countDocuments({ course: courseId });
+            
+            if (totalLessons > 0) {
+                // Talabaning bu kursdagi tugallangan darslar soni
+                const completedLessons = await Progress.countDocuments({
+                    user: userId,
+                    course: courseId,
+                    status: 'completed'
+                });
+                
+                const courseProgress = (completedLessons / totalLessons) * 100;
+                totalProgress += courseProgress;
+                coursesWithProgress++;
+            }
+        }
+
+        // O'rtacha progress
+        const averageProgress = coursesWithProgress > 0 
+            ? Math.round(totalProgress / coursesWithProgress) 
+            : 0;
+
+        // 4. Sertifikatlar (tugallangan kurslar = sertifikatlar)
+        const certificates = completedCourses;
+
+        res.status(200).json({
+            courses: totalCourses,
+            completed: completedCourses,
+            progress: averageProgress,
+            certificates: certificates
+        });
+
+    } catch (error) {
+        console.error('Statistika yuklashda xato:', error);
+        res.status(500).json({
+            message: 'Statistika yuklashda xato yuz berdi.',
+            courses: 0,
+            completed: 0,
+            progress: 0,
+            certificates: 0
+        });
+    }
+});
+
+module.exports = { getUserProfile, updateUserProfile, getUserStatistics };
