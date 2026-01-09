@@ -2,6 +2,8 @@ const User = require('../models/userModel');
 const Enrollment = require('../models/EnrollmentModel');
 const Progress = require('../models/progressModel');
 const Lesson = require('../models/lessonModel');
+const Submission = require('../models/submissionModel');
+const TestResult = require('../models/testResultModel');
 const asyncHandler = require('express-async-handler');
 
 // @desc    Tizimga kirgan foydalanuvchi profilini olish
@@ -238,6 +240,14 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
             .select('_id name email avatar')
             .sort({ name: 1 });
 
+        if (!students || students.length === 0) {
+            return res.status(200).json({
+                success: true,
+                count: 0,
+                ratings: []
+            });
+        }
+
         // 2. Har bir student uchun ballarni hisoblash
         const ratings = await Promise.all(
             students.map(async (student) => {
@@ -252,18 +262,20 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
                 let submissionScore = 0;
                 const lessonScores = new Map(); // Har bir dars uchun maksimal ballni saqlash
 
-                submissions.forEach(sub => {
-                    if (sub.grade !== undefined && sub.grade !== null) {
-                        const lessonId = sub.lesson.toString();
-                        const currentMax = lessonScores.get(lessonId) || 0;
-                        if (sub.grade > currentMax) {
-                            lessonScores.set(lessonId, sub.grade);
+                if (submissions && submissions.length > 0) {
+                    submissions.forEach(sub => {
+                        if (sub.grade !== undefined && sub.grade !== null && sub.lesson) {
+                            const lessonId = sub.lesson.toString ? sub.lesson.toString() : sub.lesson._id ? sub.lesson._id.toString() : String(sub.lesson);
+                            const currentMax = lessonScores.get(lessonId) || 0;
+                            if (sub.grade > currentMax) {
+                                lessonScores.set(lessonId, sub.grade);
+                            }
                         }
-                    }
-                });
+                    });
 
-                // Har bir darsdan maksimal ballni yig'ish
-                submissionScore = Array.from(lessonScores.values()).reduce((sum, grade) => sum + grade, 0);
+                    // Har bir darsdan maksimal ballni yig'ish
+                    submissionScore = Array.from(lessonScores.values()).reduce((sum, grade) => sum + (grade || 0), 0);
+                }
 
                 // B) Test natijalaridan olingan ballar (har bir test uchun score)
                 const testResults = await TestResult.find({
@@ -272,11 +284,13 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
                 }).select('score lesson');
 
                 let testScore = 0;
-                testResults.forEach(result => {
-                    if (result.score !== undefined && result.score !== null) {
-                        testScore += result.score;
-                    }
-                });
+                if (testResults && testResults.length > 0) {
+                    testResults.forEach(result => {
+                        if (result.score !== undefined && result.score !== null) {
+                            testScore += result.score || 0;
+                        }
+                    });
+                }
 
                 // C) Umumiy ball (submission + test ballari)
                 const totalScore = submissionScore + testScore;
@@ -330,9 +344,11 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
 
     } catch (error) {
         console.error('Reyting yuklashda xato:', error);
+        console.error('Error stack:', error.stack);
         res.status(500).json({
             success: false,
             message: 'Reyting yuklashda xato yuz berdi.',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined,
             ratings: []
         });
     }
