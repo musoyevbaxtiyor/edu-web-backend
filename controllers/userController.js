@@ -159,11 +159,14 @@ const getUserStatistics = asyncHandler(async (req, res) => {
 
     // Faqat studentlar uchun statistika
     if (userRole !== 'student') {
+        const user = await User.findById(userId).select('coins');
+        const coins = user?.coins || 0;
         return res.status(200).json({
             courses: 0,
             completed: 0,
             progress: 0,
-            certificates: 0
+            certificates: 0,
+            coins: coins
         });
     }
 
@@ -211,11 +214,16 @@ const getUserStatistics = asyncHandler(async (req, res) => {
         // 4. Sertifikatlar (tugallangan kurslar = sertifikatlar)
         const certificates = completedCourses;
 
+        // 5. User coins'ini olish
+        const user = await User.findById(userId).select('coins');
+        const coins = user?.coins || 0;
+
         res.status(200).json({
             courses: totalCourses,
             completed: completedCourses,
             progress: averageProgress,
-            certificates: certificates
+            certificates: certificates,
+            coins: coins
         });
 
     } catch (error) {
@@ -225,7 +233,8 @@ const getUserStatistics = asyncHandler(async (req, res) => {
             courses: 0,
             completed: 0,
             progress: 0,
-            certificates: 0
+            certificates: 0,
+            coins: 0
         });
     }
 });

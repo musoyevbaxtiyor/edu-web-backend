@@ -28,11 +28,17 @@ const submissionSchema = new mongoose.Schema({
         enum: ['submitted', 'in_review', 'approved', 'rejected'],
         default: 'submitted'
     },
-    // O'qituvchining bahosi
+    // O'qituvchining bahosi (eski - backward compatibility uchun saqlanadi)
     grade: {
         type: Number,
         min: 0,
         max: 100
+    },
+    // O'qituvchining bergan coins (tanga)
+    coins: {
+        type: Number,
+        min: 0,
+        default: 0
     },
     // O'qituvchining fikri
     feedback: String,

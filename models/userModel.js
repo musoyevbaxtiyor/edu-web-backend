@@ -11,6 +11,9 @@ const userSchema = mongoose.Schema({
     age: { type: Number, required: true, min: 14 },        // Yosh (minimum 14 yosh)
     
     role: { type: String, default: 'student', enum: ['student', 'admin', 'teacher'] },
+    
+    // Coins (tanga) - vazifa baholanishi uchun
+    coins: { type: Number, default: 0, min: 0 },
 }, {
     timestamps: true
 });

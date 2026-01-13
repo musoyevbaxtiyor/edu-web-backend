@@ -251,16 +251,16 @@ const getPendingSubmissionsForTeacher = asyncHandler(async (req, res) => {
     });
 });
 
-// @desc   Vazifani baholash va statusni o'zgartirish (Tasdiqlash/Rad etish)
-// @route   PUT /api/submissions/review/:submissionId
-// @access  Private (Teacher/Admin)
+// @desc   Vazifani baholash va statusni o'zgartirish (Tasdiqlash/Rad etish)
+// @route   PUT /api/submissions/review/:submissionId
+// @access  Private (Teacher/Admin)
 const handleSubmissionReview = asyncHandler(async (req, res) => {
     const { submissionId } = req.params;
-    const { grade, feedback, status } = req.body; // 🔥 status ni qabul qilamiz ('approved' yoki 'rejected')
+    const { coins, feedback, status } = req.body; // coins qabul qilinadi (grade o'rniga)
 
     if (!submissionId || !status || !['approved', 'rejected'].includes(status)) {
         res.status(400);
-        throw new Error("Submission ID, status ('approved' yoki 'rejected') va Grade kiritilishi shart.");
+        throw new Error("Submission ID va status ('approved' yoki 'rejected') kiritilishi shart.");
     }
     
     // 1. Submissionni topish
@@ -283,14 +283,25 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
     }
 
     // 2. Submissionni yangilash
-    const updatedSubmission = await Submission.findByIdAndUpdate(submissionId, {
+    const submissionUpdate = {
         status: status, // 'approved' yoki 'rejected'
-        grade: grade, 
-        feedback: feedback,
-        reviewedBy: req.user.id // Kim tekshirganini saqlash
-    }, { new: true });
+        feedback: feedback
+    };
 
-    // 3. PROGRESS STATUSINI YANGILASH
+    // Faqat approved holatida coins qo'shamiz
+    if (status === 'approved' && coins !== undefined && coins !== null) {
+        submissionUpdate.coins = Math.max(0, parseInt(coins) || 0);
+        
+        // 3. User coins'ini yangilash (faqat approved holatida)
+        const User = require('../models/userModel');
+        await User.findByIdAndUpdate(submission.user, {
+            $inc: { coins: submissionUpdate.coins } // Coins qo'shish
+        });
+    }
+
+    const updatedSubmission = await Submission.findByIdAndUpdate(submissionId, submissionUpdate, { new: true });
+
+    // 4. PROGRESS STATUSINI YANGILASH
     const progress = await Progress.findOneAndUpdate(
         { user: submission.user, lesson: submission.lesson }, 
         { 
@@ -301,7 +312,7 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
     );
     
     const message = status === 'approved' 
-        ? 'Vazifa muvaffaqiyatli tasdiqlandi. Talaba keyingi darsga o\'tdi.'
+        ? `Vazifa muvaffaqiyatli tasdiqlandi va ${coins || 0} coin berildi. Talaba keyingi darsga o'tdi.`
         : 'Vazifa rad etildi. Talaba qayta topshirishi mumkin.';
 
     res.status(200).json({
