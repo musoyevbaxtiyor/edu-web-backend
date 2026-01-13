@@ -294,9 +294,23 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
         
         // 3. User coins'ini yangilash (faqat approved holatida)
         const User = require('../models/userModel');
-        await User.findByIdAndUpdate(submission.user, {
-            $inc: { coins: submissionUpdate.coins } // Coins qo'shish
-        });
+        
+        // Avval user'ni topib, coins maydoni borligini tekshiramiz
+        const user = await User.findById(submission.user).select('coins');
+        
+        if (user) {
+            // Agar coins maydoni yo'q yoki null bo'lsa, uni 0 ga o'rnatamiz
+            if (user.coins === undefined || user.coins === null) {
+                await User.findByIdAndUpdate(submission.user, {
+                    $set: { coins: 0 }
+                });
+            }
+            
+            // Endi coins qo'shamiz
+            await User.findByIdAndUpdate(submission.user, {
+                $inc: { coins: submissionUpdate.coins }
+            });
+        }
     }
 
     const updatedSubmission = await Submission.findByIdAndUpdate(submissionId, submissionUpdate, { new: true });
