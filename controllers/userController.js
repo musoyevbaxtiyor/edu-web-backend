@@ -442,4 +442,139 @@ const getNotifications = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications };
+// @desc    O'quvchi uchun o'z ballarini olish
+// @route   GET /api/users/my-scores
+// @access  Private (Student)
+const getMyScores = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const userRole = req.user.role;
+
+    if (userRole !== 'student') {
+        return res.status(200).json({
+            submissionScore: 0,
+            testScore: 0,
+            totalScore: 0,
+            completedLessons: 0,
+            totalTests: 0,
+            correctTests: 0,
+            testAccuracy: 0,
+            rank: null
+        });
+    }
+
+    // A) Submission'lardan olingan ballar
+    const submissions = await Submission.find({
+        user: userId,
+        status: 'approved'
+    }).select('grade lesson');
+
+    let submissionScore = 0;
+    const lessonScores = new Map();
+
+    if (submissions && submissions.length > 0) {
+        submissions.forEach(sub => {
+            if (sub.grade !== undefined && sub.grade !== null && sub.lesson) {
+                const lessonId = sub.lesson.toString ? sub.lesson.toString() : (sub.lesson._id ? sub.lesson._id.toString() : String(sub.lesson));
+                const currentMax = lessonScores.get(lessonId) || 0;
+                if (sub.grade > currentMax) {
+                    lessonScores.set(lessonId, sub.grade);
+                }
+            }
+        });
+        submissionScore = Array.from(lessonScores.values()).reduce((sum, grade) => sum + (grade || 0), 0);
+    }
+
+    // B) Test natijalaridan olingan ballar
+    const testResults = await TestResult.find({
+        student: userId,
+        isCorrect: true
+    }).select('score');
+
+    let testScore = 0;
+    if (testResults && testResults.length > 0) {
+        testResults.forEach(result => {
+            if (result.score !== undefined && result.score !== null) {
+                testScore += result.score || 0;
+            }
+        });
+    }
+
+    // C) Umumiy ball
+    const totalScore = submissionScore + testScore;
+
+    // D) Qo'shimcha ma'lumotlar
+    const completedLessons = await Progress.countDocuments({
+        user: userId,
+        status: 'completed'
+    });
+
+    const totalTests = await TestResult.countDocuments({
+        student: userId
+    });
+
+    const correctTests = await TestResult.countDocuments({
+        student: userId,
+        isCorrect: true
+    });
+
+    const testAccuracy = totalTests > 0 ? Math.round((correctTests / totalTests) * 100) : 0;
+
+    // E) Reyting o'rni (barcha studentlar orasida)
+    const allStudents = await User.find({ role: 'student' }).select('_id');
+    const allRatings = await Promise.all(
+        allStudents.map(async (student) => {
+            const studentId = student._id;
+            const studentSubmissions = await Submission.find({
+                user: studentId,
+                status: 'approved'
+            }).select('grade lesson');
+            
+            let studentSubmissionScore = 0;
+            const studentLessonScores = new Map();
+            if (studentSubmissions && studentSubmissions.length > 0) {
+                studentSubmissions.forEach(sub => {
+                    if (sub.grade !== undefined && sub.grade !== null && sub.lesson) {
+                        const lessonId = sub.lesson.toString ? sub.lesson.toString() : (sub.lesson._id ? sub.lesson._id.toString() : String(sub.lesson));
+                        const currentMax = studentLessonScores.get(lessonId) || 0;
+                        if (sub.grade > currentMax) {
+                            studentLessonScores.set(lessonId, sub.grade);
+                        }
+                    }
+                });
+                studentSubmissionScore = Array.from(studentLessonScores.values()).reduce((sum, grade) => sum + (grade || 0), 0);
+            }
+
+            const studentTestResults = await TestResult.find({
+                student: studentId,
+                isCorrect: true
+            }).select('score');
+            
+            let studentTestScore = 0;
+            if (studentTestResults && studentTestResults.length > 0) {
+                studentTestResults.forEach(result => {
+                    if (result.score !== undefined && result.score !== null) {
+                        studentTestScore += result.score || 0;
+                    }
+                });
+            }
+
+            return studentSubmissionScore + studentTestScore;
+        })
+    );
+
+    allRatings.sort((a, b) => b - a);
+    const rank = allRatings.findIndex(score => score <= totalScore) + 1;
+
+    res.status(200).json({
+        submissionScore: submissionScore,
+        testScore: testScore,
+        totalScore: totalScore,
+        completedLessons: completedLessons,
+        totalTests: totalTests,
+        correctTests: correctTests,
+        testAccuracy: testAccuracy,
+        rank: rank || allRatings.length
+    });
+});
+
+module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores };

@@ -1,7 +1,7 @@
 const express = require('express');
 const { protect } = require('../middleware/authMiddleware'); 
 const { authorizeRoles } = require('../middleware/roleMiddleware'); // YANGI: Rollarni tekshirishni import qilish
-const { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications } = require('../controllers/userController');
+const { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores } = require('../controllers/userController');
 
 const router = express.Router();
 
@@ -18,7 +18,10 @@ router.get('/statistics', protect, getUserStatistics);
 router.get('/ratings', protect, getStudentsRatings);
 
 // 5. Xabarlarni olish
-router.get('/notifications', protect, getNotifications); 
+router.get('/notifications', protect, getNotifications);
+
+// 6. O'quvchi uchun o'z ballarini olish
+router.get('/my-scores', protect, getMyScores); 
 
 // 2. YENGI: Faqat ADMIN kira oladigan route
 // Bu yerda ikki bosqichli himoya ishlaydi:
