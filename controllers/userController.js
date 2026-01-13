@@ -4,6 +4,7 @@ const Progress = require('../models/progressModel');
 const Lesson = require('../models/lessonModel');
 const Submission = require('../models/submissionModel');
 const TestResult = require('../models/testResultModel');
+const Course = require('../models/courseModel');
 const asyncHandler = require('express-async-handler');
 
 // @desc    Tizimga kirgan foydalanuvchi profilini olish
@@ -351,4 +352,94 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings };
+// @desc    Xabarlarni olish (O'quvchi va O'qituvchi uchun)
+// @route   GET /api/users/notifications
+// @access  Private
+const getNotifications = asyncHandler(async (req, res) => {
+    const userId = req.user._id;
+    const userRole = req.user.role;
+
+    let notifications = [];
+
+    if (userRole === 'student') {
+        // O'quvchi uchun: tasdiqlangan/rejected submissions
+        const submissions = await Submission.find({
+            user: userId,
+            status: { $in: ['approved', 'rejected'] }
+        })
+        .populate({
+            path: 'lesson',
+            select: 'title course',
+            populate: {
+                path: 'course',
+                select: 'title _id'
+            }
+        })
+        .sort({ updatedAt: -1 })
+        .limit(50);
+
+        notifications = submissions.map(sub => ({
+            id: sub._id,
+            type: 'submission',
+            status: sub.status,
+            title: sub.status === 'approved' 
+                ? `Vazifa tasdiqlandi` 
+                : `Vazifa rad etildi`,
+            message: sub.status === 'approved'
+                ? `"${sub.lesson?.title || 'Dars'}" darsidagi vazifangiz tasdiqlandi. ${sub.coins || 0} coin olgansiz.`
+                : `"${sub.lesson?.title || 'Dars'}" darsidagi vazifangiz rad etildi. ${sub.feedback || 'Izoh kiritilmagan.'}`,
+            course: sub.lesson?.course?.title || 'Noma\'lum kurs',
+            lessonId: sub.lesson?._id,
+            coins: sub.coins || 0,
+            feedback: sub.feedback,
+            date: sub.updatedAt
+        }));
+
+    } else if (userRole === 'teacher' || userRole === 'admin') {
+        // O'qituvchi uchun: yangi topshirilgan submissions
+        // O'qituvchining kurslarini topish
+        const courses = await Course.find({ teacher: userId }).select('_id');
+        const courseIds = courses.map(c => c._id);
+
+        if (courseIds.length > 0) {
+            const submissions = await Submission.find({
+                status: { $in: ['submitted', 'in_review'] }
+            })
+            .populate({
+                path: 'lesson',
+                select: 'title course',
+                match: { course: { $in: courseIds } },
+                populate: {
+                    path: 'course',
+                    select: 'title'
+                }
+            })
+            .populate('user', 'name email')
+            .sort({ createdAt: -1 })
+            .limit(50);
+
+            notifications = submissions
+                .filter(sub => sub.lesson !== null)
+                .map(sub => ({
+                    id: sub._id,
+                    type: 'submission',
+                    status: sub.status,
+                    title: `Yangi vazifa topshirildi`,
+                    message: `${sub.user?.name || 'Talaba'} "${sub.lesson?.title || 'Dars'}" darsiga vazifa topshirdi.`,
+                    course: sub.lesson?.course?.title || 'Noma\'lum kurs',
+                    courseId: sub.lesson?.course?._id || null,
+                    studentName: sub.user?.name || 'Noma\'lum',
+                    lessonId: sub.lesson?._id,
+                    date: sub.createdAt
+                }));
+        }
+    }
+
+    res.status(200).json({
+        success: true,
+        count: notifications.length,
+        notifications: notifications
+    });
+});
+
+module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications };
