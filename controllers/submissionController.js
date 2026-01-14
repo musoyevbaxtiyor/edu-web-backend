@@ -256,7 +256,7 @@ const getPendingSubmissionsForTeacher = asyncHandler(async (req, res) => {
 // @access  Private (Teacher/Admin)
 const handleSubmissionReview = asyncHandler(async (req, res) => {
     const { submissionId } = req.params;
-    const { coins, feedback, status } = req.body; // coins qabul qilinadi (grade o'rniga)
+    const { grade, coins, feedback, status } = req.body; // grade va coins qabul qilinadi
 
     if (!submissionId || !status || !['approved', 'rejected'].includes(status)) {
         res.status(400);
@@ -288,9 +288,17 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
         feedback: feedback
     };
 
-    // Faqat approved holatida coins qo'shamiz
-    if (status === 'approved' && coins !== undefined && coins !== null) {
-        submissionUpdate.coins = Math.max(0, parseInt(coins) || 0);
+    // Faqat approved holatida grade va coins qo'shamiz
+    if (status === 'approved') {
+        // Grade qo'shish (0-100 orasida)
+        if (grade !== undefined && grade !== null) {
+            const gradeValue = Math.max(0, Math.min(100, parseInt(grade) || 0));
+            submissionUpdate.grade = gradeValue;
+        }
+        
+        // Coins qo'shish
+        if (coins !== undefined && coins !== null) {
+            submissionUpdate.coins = Math.max(0, parseInt(coins) || 0);
         
         // 3. User coins'ini yangilash (faqat approved holatida)
         const User = require('../models/userModel');
@@ -326,7 +334,7 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
     );
     
     const message = status === 'approved' 
-        ? `Vazifa muvaffaqiyatli tasdiqlandi va ${coins || 0} coin berildi. Talaba keyingi darsga o'tdi.`
+        ? `Vazifa muvaffaqiyatli tasdiqlandi. Ball: ${grade || 0}/100, Coins: ${coins || 0}. Talaba keyingi darsga o'tdi.`
         : 'Vazifa rad etildi. Talaba qayta topshirishi mumkin.';
 
     res.status(200).json({
