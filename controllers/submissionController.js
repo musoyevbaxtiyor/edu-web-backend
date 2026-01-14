@@ -208,7 +208,7 @@ const getSubmissionsByLesson = asyncHandler(async (req, res) => {
         .populate('user', 'name email') // Kim topshirganini bilish uchun
         .sort('-createdAt'); // Eng yangilarini birinchi ko'rsatish
         
-    if (!submissions) {
+    if (!submissions || submissions.length === 0) {
         return res.status(200).json({ submissions: [], message: 'Bu dars bo\'yicha topshiriqlar topilmadi.' });
     }
 
@@ -299,25 +299,26 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
         // Coins qo'shish
         if (coins !== undefined && coins !== null) {
             submissionUpdate.coins = Math.max(0, parseInt(coins) || 0);
-        
-        // 3. User coins'ini yangilash (faqat approved holatida)
-        const User = require('../models/userModel');
-        
-        // Avval user'ni topib, coins maydoni borligini tekshiramiz
-        const user = await User.findById(submission.user).select('coins');
-        
-        if (user) {
-            // Agar coins maydoni yo'q yoki null bo'lsa, uni 0 ga o'rnatamiz
-            if (user.coins === undefined || user.coins === null) {
+            
+            // 3. User coins'ini yangilash (faqat approved holatida)
+            const User = require('../models/userModel');
+            
+            // Avval user'ni topib, coins maydoni borligini tekshiramiz
+            const user = await User.findById(submission.user).select('coins');
+            
+            if (user) {
+                // Agar coins maydoni yo'q yoki null bo'lsa, uni 0 ga o'rnatamiz
+                if (user.coins === undefined || user.coins === null) {
+                    await User.findByIdAndUpdate(submission.user, {
+                        $set: { coins: 0 }
+                    });
+                }
+                
+                // Endi coins qo'shamiz
                 await User.findByIdAndUpdate(submission.user, {
-                    $set: { coins: 0 }
+                    $inc: { coins: submissionUpdate.coins }
                 });
             }
-            
-            // Endi coins qo'shamiz
-            await User.findByIdAndUpdate(submission.user, {
-                $inc: { coins: submissionUpdate.coins }
-            });
         }
     }
 
