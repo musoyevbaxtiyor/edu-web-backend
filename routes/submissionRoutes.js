@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { createSubmission,handleSubmissionReview, getMySubmission } = require('../controllers/submissionController');
-const { approveSubmission, getSubmissionsByLesson,getPendingSubmissionsForTeacher } = require('../controllers/submissionController'); // approveSubmission va getSubmissionsByLesson ni import qiling
+const { approveSubmission, getSubmissionsByLesson, getPendingSubmissionsForTeacher, getAllSubmissionsForTeacher } = require('../controllers/submissionController');
 const { uploadSubmissionFile } = require('../middleware/submissionMiddleware'); // 🔥 IMPORT QILAMIZ
 // protect'ni authMiddleware'dan to'g'ri import qilishni unutmang
 // const { protect } = require('../middleware/authMiddleware'); 
@@ -20,28 +20,17 @@ router.post('/',
     createSubmission      // 🔥 VA Controller Endi Ikkinchi KELADI
 ); 
 
-// Vazifalarni dars bo'yicha olish (Faqat O'qituvchi/Admin ko'ra oladi)
+// --- O'qituvchi: barcha topshiriqlar jadvali (/:lessonId dan OLDIN bo'lishi shart) ---
+router.get('/teacher/all', protect, restrictTo('teacher', 'admin'), getAllSubmissionsForTeacher);
+router.get('/teacher/pending', protect, restrictTo('teacher', 'admin'), getPendingSubmissionsForTeacher);
+
+// Vazifani tasdiqlash/baholash
+router.put('/review/:submissionId', protect, restrictTo('teacher', 'admin'), handleSubmissionReview);
+
+// Student o'z submission'ini olish (/:lessonId dan oldin)
+router.get('/my/:lessonId', protect, restrictTo('student'), getMySubmission);
+
+// Vazifalarni dars bo'yicha olish (Faqat O'qituvchi/Admin)
 router.get('/:lessonId', protect, restrictTo('teacher', 'admin'), getSubmissionsByLesson);
-
-// Vazifani tasdiqlash/baholash (PUT /api/submissions/approve/:submissionId)
-router.put('/review/:submissionId', // 🔥 MARSHRUT NOMINI O'ZGARTIRDIK
-    protect, 
-    restrictTo('teacher', 'admin'), 
-    handleSubmissionReview // 🔥 HANDLER NI YANGILASH
-);
-
-// --- YANIG: O'qituvchi panel uchun marshrut ---
-router.get('/teacher/pending', 
-    protect, 
-    restrictTo('teacher', 'admin'), 
-    getPendingSubmissionsForTeacher // 🔥 Vazifalarni olish
-);
-
-// --- Student o'z submission'ini olish ---
-router.get('/my/:lessonId', 
-    protect, 
-    restrictTo('student'), 
-    getMySubmission
-);
 
 module.exports = router;

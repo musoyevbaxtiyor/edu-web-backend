@@ -25,6 +25,8 @@ connectDB();
 // 2. CORS sozlamalari
 const allowedOrigins = [
     'http://localhost:3000',
+    'http://127.0.0.1:5500',
+    'http://127.0.0.1:5501',
     'https://edu-web-musoyev.netlify.app'
 ];
 

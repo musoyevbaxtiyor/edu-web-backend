@@ -215,6 +215,36 @@ const getSubmissionsByLesson = asyncHandler(async (req, res) => {
     res.status(200).json({ submissions });
 });
 
+// @desc   O'qituvchi kurslari bo'yicha BARCHA topshiriqlarni jadval uchun olish (ball, dars nomi, o'quvchi)
+// @route   GET /api/submissions/teacher/all
+// @access  Private (Teacher/Admin)
+const getAllSubmissionsForTeacher = asyncHandler(async (req, res) => {
+    const teacherId = req.user.id;
+
+    const courses = await Course.find({ teacher: teacherId }).select('_id');
+    if (courses.length === 0) {
+        return res.status(200).json({ submissions: [], message: 'Siz hali kurs yaratmagansiz.' });
+    }
+
+    const courseIds = courses.map(course => course._id);
+
+    const allSubmissions = await Submission.find({})
+        .populate({
+            path: 'lesson',
+            select: 'title course order',
+            match: { course: { $in: courseIds } }
+        })
+        .populate('user', 'name email')
+        .sort('-createdAt');
+
+    const filteredSubmissions = allSubmissions.filter(sub => sub.lesson !== null);
+
+    res.status(200).json({
+        submissions: filteredSubmissions,
+        count: filteredSubmissions.length
+    });
+});
+
 // @desc   O'qituvchi kurslari bo'yicha barcha topshiriqlarni olish
 // @route   GET /api/submissions/teacher/pending
 // @access  Private (Teacher/Admin)
@@ -381,5 +411,6 @@ module.exports = {
     handleSubmissionReview, // 🔥 YANGI FUNKSIYANI EKSPORT QILAMIZ
     getSubmissionsByLesson,
     getPendingSubmissionsForTeacher,
+    getAllSubmissionsForTeacher,
     getMySubmission
 };
