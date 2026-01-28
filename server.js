@@ -13,6 +13,7 @@ const submissionRoutes = require('./routes/submissionRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const testRoutes = require('./routes/testRoutes');
+const telegramRoutes = require('./routes/telegramRoutes');
 
 const PORT = process.env.PORT || 10000;
 const HOST = '0.0.0.0';
@@ -59,8 +60,14 @@ app.use('/api/submissions', submissionRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/telegram', telegramRoutes);
 
-// 5. Test route
+// 5. Telegram botni ishga tushirish
+const TelegramBot = require('./bot/telegramBot');
+const telegramBot = new TelegramBot();
+telegramBot.start();
+
+// 6. Test route
 app.get('/', (req, res) => {
     res.send(`Server ${PORT} portida ishlamoqda. Backend tayyor.`);
 });
