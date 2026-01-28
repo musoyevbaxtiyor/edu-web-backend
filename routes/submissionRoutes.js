@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { createSubmission,handleSubmissionReview, getMySubmission } = require('../controllers/submissionController');
-const { approveSubmission, getSubmissionsByLesson, getPendingSubmissionsForTeacher, getAllSubmissionsForTeacher } = require('../controllers/submissionController');
+const { approveSubmission, getSubmissionsByLesson, getPendingSubmissionsForTeacher, getAllSubmissionsForTeacher, getAllMySubmissions } = require('../controllers/submissionController');
 const { uploadSubmissionFile } = require('../middleware/submissionMiddleware'); // 🔥 IMPORT QILAMIZ
 // protect'ni authMiddleware'dan to'g'ri import qilishni unutmang
 // const { protect } = require('../middleware/authMiddleware'); 
@@ -27,7 +27,8 @@ router.get('/teacher/pending', protect, restrictTo('teacher', 'admin'), getPendi
 // Vazifani tasdiqlash/baholash
 router.put('/review/:submissionId', protect, restrictTo('teacher', 'admin'), handleSubmissionReview);
 
-// Student o'z submission'ini olish (/:lessonId dan oldin)
+// Student barcha submission'lari (vazifalar jadvali) — /my/:lessonId dan oldin
+router.get('/my', protect, restrictTo('student'), getAllMySubmissions);
 router.get('/my/:lessonId', protect, restrictTo('student'), getMySubmission);
 
 // Vazifalarni dars bo'yicha olish (Faqat O'qituvchi/Admin)

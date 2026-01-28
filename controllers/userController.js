@@ -577,4 +577,19 @@ const getMyScores = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores };
+// @desc    Barcha foydalanuvchilarni olish (faqat admin)
+// @route   GET /api/users/admin/all
+// @access  Private (Admin)
+const getAllUsers = asyncHandler(async (req, res) => {
+    const users = await User.find()
+        .select('-password')
+        .sort('-createdAt')
+        .lean();
+
+    res.status(200).json({
+        users,
+        count: users.length
+    });
+});
+
+module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores, getAllUsers };

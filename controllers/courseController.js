@@ -1,7 +1,10 @@
 const asyncHandler = require('express-async-handler');
 const Course = require('../models/courseModel');
 const User = require('../models/userModel');
-const mongoose = require('mongoose'); // Valid MongoDB ID'ni tekshirish uchun
+const Lesson = require('../models/lessonModel');
+const Submission = require('../models/submissionModel');
+const Progress = require('../models/progressModel');
+const mongoose = require('mongoose');
 
 // @desc    Yangi kurs yaratish
 // @route   POST /api/courses
@@ -144,9 +147,20 @@ const deleteCourse = asyncHandler(async (req, res) => {
         throw new Error('Siz faqat o\'zingiz yaratgan kursni o\'chirishingiz mumkin.');
     }
 
-    await Course.deleteOne({ _id: req.params.id });
+    const courseId = req.params.id;
 
-    res.status(200).json({ message: 'Kurs muvaffaqiyatli o\'chirildi' });
+    // O'chirilgan kursga tegishli darslar, vazifalar va progresslarni ham o'chirish
+    const lessons = await Lesson.find({ course: courseId }).select('_id');
+    const lessonIds = lessons.map((l) => l._id);
+
+    if (lessonIds.length > 0) {
+        await Submission.deleteMany({ lesson: { $in: lessonIds } });
+    }
+    await Progress.deleteMany({ course: courseId });
+    await Lesson.deleteMany({ course: courseId });
+    await Course.deleteOne({ _id: courseId });
+
+    res.status(200).json({ message: 'Kurs va unga tegishli darslar, vazifalar va progresslar muvaffaqiyatli o\'chirildi.' });
 });
 
 // FUNKSIYALARNI EKSPORT QILISH

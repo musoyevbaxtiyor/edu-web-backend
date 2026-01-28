@@ -162,7 +162,8 @@ const getLessonsByCourse = asyncHandler(async (req, res) => {
 // @access  Private
 // ... (boshqa importlar)
 const Lesson = require('../models/lessonModel');
-const Progress = require('../models/progressModel'); 
+const Progress = require('../models/progressModel');
+const Submission = require('../models/submissionModel'); 
 
 const getLessonContent = asyncHandler(async (req, res) => {
     const userId = req.user.id; 
@@ -349,12 +350,13 @@ const deleteLesson = asyncHandler(async (req, res) => {
         res.status(403);
         throw new Error('Siz faqat o\'zingizning kursingizdagi darslarni o\'chira olasiz.');
     }
-    
-    await lesson.deleteOne(); 
+
+    await Submission.deleteMany({ lesson: id });
     await Progress.deleteMany({ lesson: id });
+    await lesson.deleteOne();
 
     res.status(200).json({
-        message: 'Dars va unga bog\'liq progress yozuvlari muvaffaqiyatli o\'chirildi.'
+        message: 'Dars, unga yuborilgan vazifalar va progress yozuvlari muvaffaqiyatli o\'chirildi.'
     });
 });
 
