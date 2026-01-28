@@ -1,7 +1,7 @@
 const express = require('express');
 const { protect, restrictTo } = require('../middleware/authMiddleware');
 const { authorizeRoles } = require('../middleware/roleMiddleware');
-const { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores, getAllUsers } = require('../controllers/userController');
+const { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores, getAllUsers, updateUserPasswordByAdmin } = require('../controllers/userController');
 
 const router = express.Router();
 
@@ -25,6 +25,9 @@ router.get('/my-scores', protect, getMyScores);
 
 // 7. Admin: barcha foydalanuvchilar (User Info jadvali)
 router.get('/admin/all', protect, restrictTo('admin'), getAllUsers);
+
+// 8. Admin: foydalanuvchi parolini o'zgartirish
+router.put('/admin/:userId/password', protect, restrictTo('admin'), updateUserPasswordByAdmin);
 
 // 2. YENGI: Faqat ADMIN kira oladigan route
 // Bu yerda ikki bosqichli himoya ishlaydi:

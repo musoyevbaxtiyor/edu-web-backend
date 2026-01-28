@@ -592,4 +592,31 @@ const getAllUsers = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores, getAllUsers };
+// @desc    Admin foydalanuvchi parolini o'zgartirish
+// @route   PUT /api/users/admin/:userId/password
+// @access  Private (Admin)
+const updateUserPasswordByAdmin = asyncHandler(async (req, res) => {
+    const { userId } = req.params;
+    const { newPassword } = req.body;
+
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 6) {
+        res.status(400);
+        throw new Error('Yangi parol kamida 6 belgidan iborat bo\'lishi kerak.');
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+        res.status(404);
+        throw new Error('Foydalanuvchi topilmadi.');
+    }
+
+    user.password = newPassword.trim();
+    await user.save();
+
+    res.status(200).json({
+        message: 'Parol muvaffaqiyatli o\'zgartirildi.',
+        user: { _id: user._id, name: user.name, email: user.email }
+    });
+});
+
+module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores, getAllUsers, updateUserPasswordByAdmin };
