@@ -4,6 +4,7 @@ const User = require('../models/userModel');
 const Lesson = require('../models/lessonModel');
 const Submission = require('../models/submissionModel');
 const Progress = require('../models/progressModel');
+const Enrollment = require('../models/EnrollmentModel');
 const mongoose = require('mongoose');
 
 // @desc    Yangi kurs yaratish
@@ -149,7 +150,7 @@ const deleteCourse = asyncHandler(async (req, res) => {
 
     const courseId = req.params.id;
 
-    // O'chirilgan kursga tegishli darslar, vazifalar va progresslarni ham o'chirish
+    // O'chirilgan kursga tegishli darslar, vazifalar, progress va enrollmentlarni ham o'chirish
     const lessons = await Lesson.find({ course: courseId }).select('_id');
     const lessonIds = lessons.map((l) => l._id);
 
@@ -158,9 +159,10 @@ const deleteCourse = asyncHandler(async (req, res) => {
     }
     await Progress.deleteMany({ course: courseId });
     await Lesson.deleteMany({ course: courseId });
+    await Enrollment.deleteMany({ course: courseId }); // Enrollment yozuvlarini ham o'chirish
     await Course.deleteOne({ _id: courseId });
 
-    res.status(200).json({ message: 'Kurs va unga tegishli darslar, vazifalar va progresslar muvaffaqiyatli o\'chirildi.' });
+    res.status(200).json({ message: 'Kurs va unga tegishli darslar, vazifalar, progress va ro\'yxatdan o\'tishlar muvaffaqiyatli o\'chirildi.' });
 });
 
 // FUNKSIYALARNI EKSPORT QILISH

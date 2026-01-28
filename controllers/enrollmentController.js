@@ -61,8 +61,10 @@ const getMyEnrollments = asyncHandler(async (req, res) => {
         })
         .select('-student -__v'); // Talaba IDsi va versiya maydonini yashirish
 
-    // Faqat kurs obyektlarini qaytarish
-    const enrolledCourses = enrollments.map(e => e.course);
+    // Faqat kurs obyektlarini qaytarish va null kurslarni filtrlash (o'chirilgan kurslar)
+    const enrolledCourses = enrollments
+        .map(e => e.course)
+        .filter(course => course !== null && course !== undefined); // O'chirilgan kurslarni olib tashlash
 
     res.status(200).json({ 
         count: enrolledCourses.length,
