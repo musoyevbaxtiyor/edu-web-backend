@@ -6,6 +6,7 @@ const Submission = require('../models/submissionModel');
 const Lesson = require('../models/lessonModel');
 const Course = require('../models/courseModel');
 const TestResult = require('../models/testResultModel');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
 // @desc    Foydalanuvchi uchun Telegram token yaratish yoki olish
@@ -41,7 +42,7 @@ const getTelegramToken = asyncHandler(async (req, res) => {
     });
 });
 
-// @desc    Telegram chat ID ni yangilash (bot orqali chaqiriladi)
+// @desc    Telegram chat ID ni yangilash (bot orqali chaqiriladi) - Token orqali
 // @route   POST /api/telegram/connect
 // @access  Public (bot orqali)
 const connectTelegram = asyncHandler(async (req, res) => {
@@ -65,6 +66,55 @@ const connectTelegram = asyncHandler(async (req, res) => {
     res.status(200).json({
         success: true,
         message: 'Telegram muvaffaqiyatli ulandi'
+    });
+});
+
+// @desc    Login va parol orqali Telegram botga ulash
+// @route   POST /api/telegram/connect-login
+// @access  Public (bot orqali)
+const connectTelegramWithLogin = asyncHandler(async (req, res) => {
+    const { email, password, chatId } = req.body;
+    
+    if (!email || !password || !chatId) {
+        res.status(400);
+        throw new Error('Email, parol va Chat ID talab qilinadi');
+    }
+    
+    // Foydalanuvchini topish
+    const user = await User.findOne({ email });
+    
+    if (!user) {
+        res.status(404);
+        throw new Error('Email yoki parol noto\'g\'ri');
+    }
+    
+    // Parolni tekshirish
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    
+    if (!isPasswordValid) {
+        res.status(401);
+        throw new Error('Email yoki parol noto\'g\'ri');
+    }
+    
+    // Telegram chat ID ni saqlash
+    user.telegramChatId = chatId.toString();
+    
+    // Agar token mavjud bo'lmasa, yaratamiz
+    if (!user.telegramToken) {
+        const randomString = crypto.randomBytes(32).toString('hex');
+        user.telegramToken = `${user._id.toString()}_${randomString}`;
+    }
+    
+    await user.save();
+    
+    res.status(200).json({
+        success: true,
+        message: 'Telegram muvaffaqiyatli ulandi',
+        user: {
+            name: user.name,
+            email: user.email,
+            role: user.role
+        }
     });
 });
 
@@ -169,6 +219,38 @@ const getStudentData = asyncHandler(async (req, res) => {
         }
     }).sort({ createdAt: -1 }).limit(10);
     
+    // Kurslar ro'yxati (tugallangan va davom etayotgan)
+    const coursesList = [];
+    for (const enrollment of enrollments) {
+        const courseId = enrollment.course._id;
+        const totalLessons = await Lesson.countDocuments({ course: courseId });
+        const completedLessons = await Progress.countDocuments({
+            user: user._id,
+            course: courseId,
+            status: 'completed'
+        });
+        const courseProgress = totalLessons > 0 
+            ? Math.round((completedLessons / totalLessons) * 100) 
+            : 0;
+        
+        coursesList.push({
+            courseId: courseId,
+            title: enrollment.course.title,
+            description: enrollment.course.description,
+            progress: courseProgress,
+            completedLessons: completedLessons,
+            totalLessons: totalLessons,
+            isCompleted: enrollment.completionStatus === 'Completed',
+            enrolledAt: enrollment.enrolledAt
+        });
+    }
+    
+    // Tugallangan kurslar
+    const completedCoursesList = coursesList.filter(c => c.isCompleted);
+    
+    // Davom etayotgan kurslar
+    const inProgressCoursesList = coursesList.filter(c => !c.isCompleted);
+    
     res.status(200).json({
         success: true,
         user: {
@@ -184,6 +266,9 @@ const getStudentData = asyncHandler(async (req, res) => {
             submissionScore,
             testScore
         },
+        courses: coursesList,
+        completedCourses: completedCoursesList,
+        inProgressCourses: inProgressCoursesList,
         recentApprovedLessons: approvedSubmissions.map(sub => ({
             lessonTitle: sub.lesson?.title || 'Noma\'lum',
             courseTitle: sub.lesson?.course?.title || 'Noma\'lum',
@@ -258,6 +343,7 @@ const getTeacherNotifications = asyncHandler(async (req, res) => {
 module.exports = {
     getTelegramToken,
     connectTelegram,
+    connectTelegramWithLogin,
     getStudentData,
     getTeacherNotifications
 };
