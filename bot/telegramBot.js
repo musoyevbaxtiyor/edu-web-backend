@@ -2,7 +2,11 @@ const { Telegraf, session } = require('telegraf');
 const User = require('../models/userModel');
 const axios = require('axios');
 
+// BASE_URL ni environment variable'dan olish, agar bo'lmasa localhost ishlatish
 const BASE_URL = process.env.BASE_URL || 'http://localhost:10000';
+
+// Debug uchun BASE_URL ni console'ga chiqarish
+console.log(`🔗 Bot BASE_URL: ${BASE_URL}`);
 
 class TelegramBot {
     constructor() {
