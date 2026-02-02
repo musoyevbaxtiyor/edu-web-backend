@@ -15,12 +15,16 @@ const userSchema = mongoose.Schema({
     // Coins (tanga) - vazifa baholanishi uchun
     coins: { type: Number, default: 0, min: 0 },
     
-    // Telegram bot integratsiyasi
-    telegramChatId: { type: String, default: null, unique: true, sparse: true },
-    telegramToken: { type: String, default: null, unique: true, sparse: true }, // Har bir foydalanuvchi uchun unique token
+    // Telegram bot integratsiyasi (sparse: faqat qiymat bor bo'lganda unique tekshiriladi, null lar takrorlanishi mumkin)
+    telegramChatId: { type: String, default: null },
+    telegramToken: { type: String, default: null },
 }, {
     timestamps: true
 });
+
+// Sparse unique index: null qiymatlar takrorlanishi mumkin, faqat null bo'lmaganda unique
+userSchema.index({ telegramChatId: 1 }, { unique: true, sparse: true });
+userSchema.index({ telegramToken: 1 }, { unique: true, sparse: true });
 
 // Parolni saqlashdan oldin xesh qilish (hashing) qismi o'zgarishsiz qoladi...
 userSchema.pre('save', async function (next) {
