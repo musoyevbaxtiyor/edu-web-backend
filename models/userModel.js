@@ -15,9 +15,9 @@ const userSchema = mongoose.Schema({
     // Coins (tanga) - vazifa baholanishi uchun
     coins: { type: Number, default: 0, min: 0 },
     
-    // Telegram bot integratsiyasi (sparse: faqat qiymat bor bo'lganda unique tekshiriladi, null lar takrorlanishi mumkin)
-    telegramChatId: { type: String, default: null },
-    telegramToken: { type: String, default: null },
+    // Telegram bot: default yo'q — yangi userda maydon bo'lmaydi, sparse indeks faqat qiymat bor hujjatlar uchun
+    telegramChatId: { type: String },
+    telegramToken: { type: String },
 }, {
     timestamps: true
 });
