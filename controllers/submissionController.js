@@ -1,8 +1,12 @@
 // edu-web-backend/controllers/submissionController.js
 const asyncHandler = require('express-async-handler');
+const path = require('path');
+const fs = require('fs');
 const Submission = require('../models/submissionModel');
 const Progress = require('../models/progressModel'); // Progress modelini import qilish
 const Course = require('../models/courseModel'); // Kurs modelini import qilish shart
+
+const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
 // ...
 // Vazifa: POST /api/submissions
 // const createSubmission = asyncHandler(async (req, res) => {
@@ -422,6 +426,36 @@ const getMySubmission = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Vazifa faylini yuklab olish (ZIP va boshqa formatlar uchun, CORS/fetch muammosiz)
+// @route   GET /api/submissions/file/:submissionId
+// @access  Private (Teacher/Admin)
+const getSubmissionFile = asyncHandler(async (req, res) => {
+    const { submissionId } = req.params;
+    const submission = await Submission.findById(submissionId)
+        .populate({ path: 'lesson', select: 'course', populate: { path: 'course', select: 'teacher' } });
+    if (!submission || !submission.submissionUrl) {
+        res.status(404);
+        throw new Error('Topshiriq yoki fayl topilmadi.');
+    }
+    // O'qituvchi faqat o'z kursidagi topshiriqlarni yuklashi mumkin
+    if (submission.lesson && submission.lesson.course && submission.lesson.course.teacher) {
+        const teacherId = submission.lesson.course.teacher.toString();
+        if (req.user.role === 'teacher' && req.user.id !== teacherId) {
+            res.status(403);
+            throw new Error('Ushbu faylni yuklab olish huquqingiz yo\'q.');
+        }
+    }
+    const filename = path.basename(submission.submissionUrl);
+    const filePath = path.join(UPLOADS_BASE, 'submissions', filename);
+    if (!fs.existsSync(filePath)) {
+        res.status(404);
+        throw new Error('Fayl diskda topilmadi.');
+    }
+    const safeName = filename || 'vazifa-fayl';
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName.replace(/"/g, '\\"')}"`);
+    res.sendFile(filePath);
+});
+
 module.exports = {
     createSubmission,
     approveSubmission: handleSubmissionReview,
@@ -430,5 +464,6 @@ module.exports = {
     getPendingSubmissionsForTeacher,
     getAllSubmissionsForTeacher,
     getAllMySubmissions,
-    getMySubmission
+    getMySubmission,
+    getSubmissionFile
 };

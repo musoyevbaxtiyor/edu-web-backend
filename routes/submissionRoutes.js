@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createSubmission,handleSubmissionReview, getMySubmission } = require('../controllers/submissionController');
+const { createSubmission, handleSubmissionReview, getMySubmission, getSubmissionFile } = require('../controllers/submissionController');
 const { approveSubmission, getSubmissionsByLesson, getPendingSubmissionsForTeacher, getAllSubmissionsForTeacher, getAllMySubmissions } = require('../controllers/submissionController');
 const { uploadSubmissionFile } = require('../middleware/submissionMiddleware'); // 🔥 IMPORT QILAMIZ
 // protect'ni authMiddleware'dan to'g'ri import qilishni unutmang
@@ -23,6 +23,9 @@ router.post('/',
 // --- O'qituvchi: barcha topshiriqlar jadvali (/:lessonId dan OLDIN bo'lishi shart) ---
 router.get('/teacher/all', protect, restrictTo('teacher', 'admin'), getAllSubmissionsForTeacher);
 router.get('/teacher/pending', protect, restrictTo('teacher', 'admin'), getPendingSubmissionsForTeacher);
+
+// Vazifa faylini yuklab olish (ZIP va boshqalar — yangi tab ochilmasdan)
+router.get('/file/:submissionId', protect, restrictTo('teacher', 'admin'), getSubmissionFile);
 
 // Vazifani tasdiqlash/baholash
 router.put('/review/:submissionId', protect, restrictTo('teacher', 'admin'), handleSubmissionReview);
