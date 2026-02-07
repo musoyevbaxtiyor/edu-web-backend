@@ -2,8 +2,17 @@ require('dotenv').config(); // .env faylini yuklash
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const connectDB = require('./config/db'); // DB ulanish
+
+// Uploads papka: production'da UPLOAD_DIR ga persistent disk mount qiling (Render Disk)
+const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
+try {
+    fs.mkdirSync(path.join(UPLOADS_BASE, 'submissions'), { recursive: true });
+} catch (e) {
+    console.warn('Uploads papka yaratishda xato:', e.message);
+}
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const courseRoutes = require('./routes/courseRoutes');
@@ -45,8 +54,8 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// 3. Middleware
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+// 3. Middleware — fayllar UPLOADS_BASE dan (production'da persistent disk)
+app.use('/uploads', express.static(UPLOADS_BASE));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

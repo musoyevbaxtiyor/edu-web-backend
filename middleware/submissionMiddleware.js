@@ -1,11 +1,20 @@
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
+
+// Production (Render): UPLOAD_DIR ni persistent disk ga qo'ying, masalan /opt/render/project/data/uploads
+const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
+const SUBMISSIONS_DIR = path.join(UPLOADS_BASE, 'submissions');
 
 // 1. Faylni saqlash joyi va nomini aniqlash
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Fayllar 'uploads/submissions' papkasida saqlanadi
-        cb(null, 'uploads/submissions'); 
+        try {
+            fs.mkdirSync(SUBMISSIONS_DIR, { recursive: true });
+            cb(null, SUBMISSIONS_DIR);
+        } catch (err) {
+            cb(err, null);
+        }
     },
     filename: (req, file, cb) => {
         // Fayl nomini noyob qilib yaratish: user_id-lesson_id-timestamp.ext
