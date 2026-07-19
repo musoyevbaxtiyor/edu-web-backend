@@ -41,7 +41,9 @@ const allowedOrigins = [
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5500',
     'http://127.0.0.1:5501',
-    'https://edu-web-musoyev.netlify.app'
+    'https://edu-web-musoyev.netlify.app',
+    'https://eduweb.uz',          // Asosiy domen
+    'https://www.eduweb.uz'       // www subdomeni
 ];
 
 // Qo'shimcha ruxsat etilgan manzillarni .env orqali berish mumkin (vergul bilan ajratilgan)
@@ -51,10 +53,13 @@ if (process.env.CLIENT_ORIGINS) {
 
 const corsOptions = {
     origin: function(origin, callback) {
+        // origin yo'q (server-server, curl) yoki ro'yxatda bo'lsa — ruxsat
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
-            callback(new Error('Bu manzil CORS siyosati tomonidan bloklangan.'), false);
+            // Rad etilganda xato tashlamaymiz — shunchaki CORS sarlavhasini qo'shmaymiz
+            // (browser o'zi bloklaydi; 500 xato spam bo'lmaydi)
+            callback(null, false);
         }
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
