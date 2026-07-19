@@ -22,6 +22,7 @@ const submissionRoutes = require('./routes/submissionRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const testRoutes = require('./routes/testRoutes');
+const examRoutes = require('./routes/examRoutes');
 const telegramRoutes = require('./routes/telegramRoutes');
 
 const PORT = process.env.PORT || 10000;
@@ -83,6 +84,7 @@ app.use('/api/submissions', submissionRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/exams', examRoutes);
 app.use('/api/telegram', telegramRoutes);
 
 // 5. Telegram botni ishga tushirish
