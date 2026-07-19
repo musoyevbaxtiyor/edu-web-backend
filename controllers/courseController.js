@@ -123,10 +123,9 @@ const updateCourse = asyncHandler(async (req, res) => {
         runValidators: true,
     });
     
-    res.status(200).json({ 
-        message: 'Kurs muvaffaqiyatli yangilandi', 
-        getMyCreatedCourses, // <<< YANGI FUNKSIYANI EKSPORT QILAMIZ
-        course: updatedCourse 
+    res.status(200).json({
+        message: 'Kurs muvaffaqiyatli yangilandi',
+        course: updatedCourse
     });
 });
 

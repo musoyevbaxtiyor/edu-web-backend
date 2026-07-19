@@ -311,13 +311,13 @@ const updateLesson = asyncHandler(async (req, res) => {
         throw new Error('Siz faqat o\'zingizning kursingizdagi darslarni tahrirlay olasiz.');
     }
     
-    const updatedLesson = await Lesson.findByIdAndUpdate(id, {
-        title: updateData.title || lesson.title,
-        order: updateData.order || lesson.order,
-        contentType: updateData.contentType || lesson.contentType,
-        contentUrl: updateData.contentUrl, 
-        taskDescription: updateData.taskDescription
-    }, { new: true });
+    // Faqat yuborilgan maydonlarni yangilaymiz (aks holda mavjud qiymat saqlanadi)
+    const fields = {};
+    for (const key of ['title', 'order', 'videoUrl', 'documentationUrl', 'taskFileUrl', 'taskDescription']) {
+        if (updateData[key] !== undefined && updateData[key] !== '') fields[key] = updateData[key];
+    }
+
+    const updatedLesson = await Lesson.findByIdAndUpdate(id, fields, { new: true, runValidators: true });
 
     res.status(200).json({
         message: 'Dars muvaffaqiyatli yangilandi.',

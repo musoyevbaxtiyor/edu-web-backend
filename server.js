@@ -35,10 +35,19 @@ connectDB();
 // 2. CORS sozlamalari
 const allowedOrigins = [
     'http://localhost:3000',
+    'http://localhost:4173',   // Vite preview
+    'http://localhost:5173',   // Vite dev (React frontend)
+    'http://127.0.0.1:4173',
+    'http://127.0.0.1:5173',
     'http://127.0.0.1:5500',
     'http://127.0.0.1:5501',
     'https://edu-web-musoyev.netlify.app'
 ];
+
+// Qo'shimcha ruxsat etilgan manzillarni .env orqali berish mumkin (vergul bilan ajratilgan)
+if (process.env.CLIENT_ORIGINS) {
+    allowedOrigins.push(...process.env.CLIENT_ORIGINS.split(',').map((s) => s.trim()).filter(Boolean));
+}
 
 const corsOptions = {
     origin: function(origin, callback) {
@@ -80,6 +89,11 @@ telegramBot.start();
 app.get('/', (req, res) => {
     res.send(`Server ${PORT} portida ishlamoqda. Backend tayyor.`);
 });
+
+// 7. Xatoliklarni boshqarish (barcha routelardan keyin bo'lishi shart)
+const { notFound, errorHandler } = require('./middleware/errorMiddleware');
+app.use(notFound);
+app.use(errorHandler);
 
 // 6. Serverni ishga tushirish
 // 🔥 'const server =' qismini qo'shing.

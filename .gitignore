@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Muhit o'zgaruvchilari (maxfiy kalitlar — hech qachon commit qilinmaydi)
+.env
+.env.local
+
+# Yuklangan fayllar
+uploads/
+
+# Loglar
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
