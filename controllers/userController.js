@@ -4,8 +4,62 @@ const Progress = require('../models/progressModel');
 const Lesson = require('../models/lessonModel');
 const Submission = require('../models/submissionModel');
 const TestResult = require('../models/testResultModel');
+const ExamResult = require('../models/examResultModel');
+const PracticeSubmission = require('../models/practiceSubmissionModel');
+const PracticeTask = require('../models/practiceTaskModel');
 const Course = require('../models/courseModel');
 const asyncHandler = require('express-async-handler');
+
+/* ============================================================
+   Reyting ballarini hisoblash (bitta o'quvchi uchun)
+   Umumiy ball = kurs vazifalari + testlar + amaliy tasklar + imtihonlar
+   - Kurs vazifasi: har dars uchun eng yuqori tasdiqlangan baho (0-100)
+   - Test: to'g'ri javoblar score yig'indisi
+   - Amaliy task: har task uchun eng yuqori tasdiqlangan baho (0-100)
+   - Imtihon: har imtihon uchun eng yaxshi natija foizi (100% = 100 ball)
+   ============================================================ */
+async function computeScores(studentId) {
+    // A) Kurs vazifalari — har dars uchun maksimal baho
+    const submissions = await Submission.find({ user: studentId, status: 'approved' }).select('grade lesson');
+    const lessonScores = new Map();
+    submissions.forEach((sub) => {
+        if (sub.grade !== undefined && sub.grade !== null && sub.lesson) {
+            const key = sub.lesson.toString();
+            if ((lessonScores.get(key) || 0) < sub.grade) lessonScores.set(key, sub.grade);
+        }
+    });
+    const submissionScore = Array.from(lessonScores.values()).reduce((sum, g) => sum + (g || 0), 0);
+
+    // B) Testlar
+    const testResults = await TestResult.find({ student: studentId, isCorrect: true }).select('score');
+    const testScore = testResults.reduce((sum, r) => sum + (r.score || 0), 0);
+
+    // C) Amaliy tasklar — har task uchun maksimal baho
+    const practiceSubs = await PracticeSubmission.find({ student: studentId, status: 'approved' }).select('grade task');
+    const taskScores = new Map();
+    practiceSubs.forEach((s) => {
+        if (s.grade !== undefined && s.grade !== null && s.task) {
+            const key = s.task.toString();
+            if ((taskScores.get(key) || 0) < s.grade) taskScores.set(key, s.grade);
+        }
+    });
+    const practiceScore = Array.from(taskScores.values()).reduce((sum, g) => sum + (g || 0), 0);
+
+    // D) Imtihonlar — har imtihon uchun eng yaxshi foiz (100% = 100 ball)
+    const examResults = await ExamResult.find({ student: studentId }).select('scorePercent exam');
+    const examBest = new Map();
+    examResults.forEach((r) => {
+        if (r.exam) {
+            const key = r.exam.toString();
+            if ((examBest.get(key) || 0) < (r.scorePercent || 0)) examBest.set(key, r.scorePercent || 0);
+        }
+    });
+    const examScore = Array.from(examBest.values()).reduce((sum, g) => sum + (g || 0), 0);
+
+    const totalScore = submissionScore + testScore + practiceScore + examScore;
+
+    return { submissionScore, testScore, practiceScore, examScore, totalScore };
+}
 
 // @desc    Tizimga kirgan foydalanuvchi profilini olish
 // @route   GET /api/users/profile
@@ -262,49 +316,10 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
         students.map(async (student) => {
             const studentId = student._id;
 
-            // A) Submission'lardan olingan ballar (har bir approved submission uchun grade)
-            const submissions = await Submission.find({
-                user: studentId,
-                status: 'approved'
-            }).select('grade lesson');
+            // Umumiy ballarni hisoblash (vazifa + test + amaliy + imtihon)
+            const scores = await computeScores(studentId);
 
-            let submissionScore = 0;
-            const lessonScores = new Map(); // Har bir dars uchun maksimal ballni saqlash
-
-            if (submissions && submissions.length > 0) {
-                submissions.forEach(sub => {
-                    if (sub.grade !== undefined && sub.grade !== null && sub.lesson) {
-                        const lessonId = sub.lesson.toString ? sub.lesson.toString() : (sub.lesson._id ? sub.lesson._id.toString() : String(sub.lesson));
-                        const currentMax = lessonScores.get(lessonId) || 0;
-                        if (sub.grade > currentMax) {
-                            lessonScores.set(lessonId, sub.grade);
-                        }
-                    }
-                });
-
-                // Har bir darsdan maksimal ballni yig'ish
-                submissionScore = Array.from(lessonScores.values()).reduce((sum, grade) => sum + (grade || 0), 0);
-            }
-
-            // B) Test natijalaridan olingan ballar (har bir test uchun score)
-            const testResults = await TestResult.find({
-                student: studentId,
-                isCorrect: true
-            }).select('score lesson');
-
-            let testScore = 0;
-            if (testResults && testResults.length > 0) {
-                testResults.forEach(result => {
-                    if (result.score !== undefined && result.score !== null) {
-                        testScore += result.score || 0;
-                    }
-                });
-            }
-
-            // C) Umumiy ball (submission + test ballari)
-            const totalScore = submissionScore + testScore;
-
-            // D) Qo'shimcha ma'lumotlar
+            // Qo'shimcha ma'lumotlar
             const completedLessons = await Progress.countDocuments({
                 user: studentId,
                 status: 'completed'
@@ -326,9 +341,11 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
                     email: student.email,
                     avatar: student.avatar
                 },
-                submissionScore: submissionScore,
-                testScore: testScore,
-                totalScore: totalScore,
+                submissionScore: scores.submissionScore,
+                testScore: scores.testScore,
+                practiceScore: scores.practiceScore,
+                examScore: scores.examScore,
+                totalScore: scores.totalScore,
                 completedLessons: completedLessons,
                 totalTests: totalTests,
                 correctTests: correctTests,
@@ -395,6 +412,35 @@ const getNotifications = asyncHandler(async (req, res) => {
             date: sub.updatedAt
         }));
 
+        // Amaliy tasklar bo'yicha (tasdiqlangan/rad etilgan)
+        const practiceSubs = await PracticeSubmission.find({
+            student: userId,
+            status: { $in: ['approved', 'rejected'] }
+        })
+        .populate('task', 'title category level')
+        .sort({ updatedAt: -1 })
+        .limit(50);
+
+        const practiceNotifs = practiceSubs
+            .filter((s) => s.task)
+            .map((s) => ({
+                id: s._id,
+                type: 'practice',
+                status: s.status,
+                title: s.status === 'approved' ? 'Amaliy task tasdiqlandi' : 'Amaliy task rad etildi',
+                message: s.status === 'approved'
+                    ? `"${s.task?.title || 'Task'}" amaliy taskingiz tasdiqlandi. Ball: ${s.grade ?? 0}/100.`
+                    : `"${s.task?.title || 'Task'}" amaliy taskingiz rad etildi. ${s.feedback || 'Izoh kiritilmagan.'}`,
+                course: 'Amaliy tasklar',
+                grade: s.grade ?? 0,
+                feedback: s.feedback,
+                date: s.updatedAt,
+            }));
+
+        notifications = [...notifications, ...practiceNotifs]
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 50);
+
     } else if (userRole === 'teacher' || userRole === 'admin') {
         // O'qituvchi uchun: yangi topshirilgan submissions
         // O'qituvchining kurslarini topish
@@ -433,6 +479,40 @@ const getNotifications = asyncHandler(async (req, res) => {
                     date: sub.createdAt
                 }));
         }
+
+        // Amaliy tasklar bo'yicha yangi topshiriqlar (o'qituvchi qo'shgan tasklar; admin — barchasi)
+        const taskFilter = {};
+        if (userRole === 'teacher') taskFilter.createdBy = userId;
+        const myTasks = await PracticeTask.find(taskFilter).select('_id').lean();
+        const myTaskIds = myTasks.map((t) => t._id);
+
+        if (myTaskIds.length > 0) {
+            const practiceSubs = await PracticeSubmission.find({
+                task: { $in: myTaskIds },
+                status: { $in: ['submitted', 'in_review'] }
+            })
+            .populate('task', 'title category level')
+            .populate('student', 'name email')
+            .sort({ createdAt: -1 })
+            .limit(50);
+
+            const practiceNotifs = practiceSubs
+                .filter((s) => s.task)
+                .map((s) => ({
+                    id: s._id,
+                    type: 'practice',
+                    status: s.status,
+                    title: 'Yangi amaliy task topshirildi',
+                    message: `${s.student?.name || 'Talaba'} "${s.task?.title || 'Task'}" amaliy taskini topshirdi.`,
+                    course: 'Amaliy tasklar',
+                    studentName: s.student?.name || 'Noma\'lum',
+                    date: s.createdAt,
+                }));
+
+            notifications = [...notifications, ...practiceNotifs]
+                .sort((a, b) => new Date(b.date) - new Date(a.date))
+                .slice(0, 50);
+        }
     }
 
     res.status(200).json({
@@ -453,6 +533,8 @@ const getMyScores = asyncHandler(async (req, res) => {
         return res.status(200).json({
             submissionScore: 0,
             testScore: 0,
+            practiceScore: 0,
+            examScore: 0,
             totalScore: 0,
             completedLessons: 0,
             totalTests: 0,
@@ -462,113 +544,29 @@ const getMyScores = asyncHandler(async (req, res) => {
         });
     }
 
-    // A) Submission'lardan olingan ballar
-    const submissions = await Submission.find({
-        user: userId,
-        status: 'approved'
-    }).select('grade lesson');
+    // A-D) Umumiy ballar (vazifa + test + amaliy task + imtihon)
+    const scores = await computeScores(userId);
 
-    let submissionScore = 0;
-    const lessonScores = new Map();
-
-    if (submissions && submissions.length > 0) {
-        submissions.forEach(sub => {
-            if (sub.grade !== undefined && sub.grade !== null && sub.lesson) {
-                const lessonId = sub.lesson.toString ? sub.lesson.toString() : (sub.lesson._id ? sub.lesson._id.toString() : String(sub.lesson));
-                const currentMax = lessonScores.get(lessonId) || 0;
-                if (sub.grade > currentMax) {
-                    lessonScores.set(lessonId, sub.grade);
-                }
-            }
-        });
-        submissionScore = Array.from(lessonScores.values()).reduce((sum, grade) => sum + (grade || 0), 0);
-    }
-
-    // B) Test natijalaridan olingan ballar
-    const testResults = await TestResult.find({
-        student: userId,
-        isCorrect: true
-    }).select('score');
-
-    let testScore = 0;
-    if (testResults && testResults.length > 0) {
-        testResults.forEach(result => {
-            if (result.score !== undefined && result.score !== null) {
-                testScore += result.score || 0;
-            }
-        });
-    }
-
-    // C) Umumiy ball
-    const totalScore = submissionScore + testScore;
-
-    // D) Qo'shimcha ma'lumotlar
-    const completedLessons = await Progress.countDocuments({
-        user: userId,
-        status: 'completed'
-    });
-
-    const totalTests = await TestResult.countDocuments({
-        student: userId
-    });
-
-    const correctTests = await TestResult.countDocuments({
-        student: userId,
-        isCorrect: true
-    });
-
+    // Qo'shimcha statistika
+    const completedLessons = await Progress.countDocuments({ user: userId, status: 'completed' });
+    const totalTests = await TestResult.countDocuments({ student: userId });
+    const correctTests = await TestResult.countDocuments({ student: userId, isCorrect: true });
     const testAccuracy = totalTests > 0 ? Math.round((correctTests / totalTests) * 100) : 0;
 
-    // E) Reyting o'rni (barcha studentlar orasida)
+    // E) Reyting o'rni (barcha o'quvchilar orasida)
     const allStudents = await User.find({ role: 'student' }).select('_id');
     const allRatings = await Promise.all(
-        allStudents.map(async (student) => {
-            const studentId = student._id;
-            const studentSubmissions = await Submission.find({
-                user: studentId,
-                status: 'approved'
-            }).select('grade lesson');
-            
-            let studentSubmissionScore = 0;
-            const studentLessonScores = new Map();
-            if (studentSubmissions && studentSubmissions.length > 0) {
-                studentSubmissions.forEach(sub => {
-                    if (sub.grade !== undefined && sub.grade !== null && sub.lesson) {
-                        const lessonId = sub.lesson.toString ? sub.lesson.toString() : (sub.lesson._id ? sub.lesson._id.toString() : String(sub.lesson));
-                        const currentMax = studentLessonScores.get(lessonId) || 0;
-                        if (sub.grade > currentMax) {
-                            studentLessonScores.set(lessonId, sub.grade);
-                        }
-                    }
-                });
-                studentSubmissionScore = Array.from(studentLessonScores.values()).reduce((sum, grade) => sum + (grade || 0), 0);
-            }
-
-            const studentTestResults = await TestResult.find({
-                student: studentId,
-                isCorrect: true
-            }).select('score');
-            
-            let studentTestScore = 0;
-            if (studentTestResults && studentTestResults.length > 0) {
-                studentTestResults.forEach(result => {
-                    if (result.score !== undefined && result.score !== null) {
-                        studentTestScore += result.score || 0;
-                    }
-                });
-            }
-
-            return studentSubmissionScore + studentTestScore;
-        })
+        allStudents.map(async (student) => (await computeScores(student._id)).totalScore)
     );
-
     allRatings.sort((a, b) => b - a);
-    const rank = allRatings.findIndex(score => score <= totalScore) + 1;
+    const rank = allRatings.findIndex((score) => score <= scores.totalScore) + 1;
 
     res.status(200).json({
-        submissionScore: submissionScore,
-        testScore: testScore,
-        totalScore: totalScore,
+        submissionScore: scores.submissionScore,
+        testScore: scores.testScore,
+        practiceScore: scores.practiceScore,
+        examScore: scores.examScore,
+        totalScore: scores.totalScore,
         completedLessons: completedLessons,
         totalTests: totalTests,
         correctTests: correctTests,

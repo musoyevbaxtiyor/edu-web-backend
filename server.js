@@ -10,6 +10,7 @@ const connectDB = require('./config/db'); // DB ulanish
 const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
 try {
     fs.mkdirSync(path.join(UPLOADS_BASE, 'submissions'), { recursive: true });
+    fs.mkdirSync(path.join(UPLOADS_BASE, 'practice'), { recursive: true });
 } catch (e) {
     console.warn('Uploads papka yaratishda xato:', e.message);
 }
@@ -23,6 +24,7 @@ const reviewRoutes = require('./routes/reviewRoutes');
 const progressRoutes = require('./routes/progressRoutes');
 const testRoutes = require('./routes/testRoutes');
 const examRoutes = require('./routes/examRoutes');
+const practiceRoutes = require('./routes/practiceRoutes');
 const telegramRoutes = require('./routes/telegramRoutes');
 
 const PORT = process.env.PORT || 10000;
@@ -85,6 +87,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/progress', progressRoutes);
 app.use('/api/tests', testRoutes);
 app.use('/api/exams', examRoutes);
+app.use('/api/practice', practiceRoutes);
 app.use('/api/telegram', telegramRoutes);
 
 // 5. Telegram botni ishga tushirish
