@@ -56,7 +56,7 @@ const getMyEnrollments = asyncHandler(async (req, res) => {
             select: 'title description price teacher isPublished', // Kursning kerakli maydonlari
             populate: {
                 path: 'teacher', // Kurs ichidagi o'qituvchi ma'lumotlarini ham olish
-                select: 'name email role'
+                select: 'name' // Frontendga faqat ism kerak (email/rol talabaga berilmaydi)
             }
         })
         .select('-student -__v'); // Talaba IDsi va versiya maydonini yashirish

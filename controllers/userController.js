@@ -9,6 +9,7 @@ const PracticeSubmission = require('../models/practiceSubmissionModel');
 const PracticeTask = require('../models/practiceTaskModel');
 const Course = require('../models/courseModel');
 const asyncHandler = require('express-async-handler');
+const { escapeRegex } = require('../utils/validation');
 
 /* ============================================================
    Reyting ballarini hisoblash (bitta o'quvchi uchun)
@@ -94,15 +95,18 @@ const updateUserProfile = asyncHandler(async (req, res) => {
     if (email) {
         // Email formatini tekshirish
         const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-            return res.status(400).json({ 
-                message: 'Noto\'g\'ri email formati.' 
+        if (typeof email !== 'string' || !emailRegex.test(email)) {
+            return res.status(400).json({
+                message: 'Noto\'g\'ri email formati.'
             });
         }
 
-        // Email boshqa foydalanuvchi tomonidan ishlatilganligini tekshirish
-        const existingUser = await User.findOne({ 
-            email: email.toLowerCase(),
+        // Email boshqa foydalanuvchi tomonidan ishlatilganligini tekshirish.
+        // Email o'zgarsa — harfga befarq (eski aralash harfli emaillar bilan to'qnashmasin)
+        const newEmail = email.toLowerCase();
+        const isSameEmail = newEmail === String(req.user.email || '').toLowerCase();
+        const existingUser = await User.findOne({
+            email: isSameEmail ? newEmail : new RegExp(`^${escapeRegex(newEmail)}$`, 'i'),
             _id: { $ne: userId } // Joriy foydalanuvchidan boshqa
         });
 
@@ -226,16 +230,16 @@ const getUserStatistics = asyncHandler(async (req, res) => {
     }
 
     try {
-        // 1. Ro'yxatdan o'tgan kurslar
-        const enrollments = await Enrollment.find({ student: userId })
-            .populate('course', '_id title');
+        // 1. Ro'yxatdan o'tgan kurslar (o'chirilgan kurslar hisobga olinmaydi)
+        const enrollments = (await Enrollment.find({ student: userId })
+            .populate('course', '_id title'))
+            .filter((e) => e.course);
 
         const totalCourses = enrollments.length;
-        
-        // 2. Tugallangan kurslar (completionStatus === 'Completed')
-        const completedCourses = enrollments.filter(
-            e => e.completionStatus === 'Completed'
-        ).length;
+
+        // 2. Tugallangan kurslar — completionStatus hech qayerda yangilanmaydi,
+        // shuning uchun progressdan hisoblaymiz: kursdagi barcha darslar 'completed' bo'lsa
+        let completedCourses = 0;
 
         // 3. Umumiy progress hisoblash
         let totalProgress = 0;
@@ -243,22 +247,27 @@ const getUserStatistics = asyncHandler(async (req, res) => {
 
         for (const enrollment of enrollments) {
             const courseId = enrollment.course._id;
-            
-            // Kursdagi jami darslar soni
-            const totalLessons = await Lesson.countDocuments({ course: courseId });
-            
+
+            // Kursdagi mavjud darslar
+            const lessonIds = await Lesson.find({ course: courseId }).distinct('_id');
+            const totalLessons = lessonIds.length;
+            let isCompleted = enrollment.completionStatus === 'Completed';
+
             if (totalLessons > 0) {
-                // Talabaning bu kursdagi tugallangan darslar soni
+                // Talabaning bu kursdagi tugallangan darslar soni (o'chirilgan darslarsiz)
                 const completedLessons = await Progress.countDocuments({
                     user: userId,
-                    course: courseId,
+                    lesson: { $in: lessonIds },
                     status: 'completed'
                 });
-                
-                const courseProgress = (completedLessons / totalLessons) * 100;
+
+                const courseProgress = Math.min(100, (completedLessons / totalLessons) * 100);
                 totalProgress += courseProgress;
                 coursesWithProgress++;
+                if (completedLessons >= totalLessons) isCompleted = true;
             }
+
+            if (isCompleted) completedCourses++;
         }
 
         // O'rtacha progress
@@ -298,9 +307,12 @@ const getUserStatistics = asyncHandler(async (req, res) => {
 // @route   GET /api/users/ratings
 // @access  Private (Hamma ko'ra oladi)
 const getStudentsRatings = asyncHandler(async (req, res) => {
+    // Boshqa o'quvchilarning emaili faqat o'qituvchi/adminga ko'rsatiladi
+    const showEmail = req.user.role === 'teacher' || req.user.role === 'admin';
+
     // 1. Barcha studentlarni olish
     const students = await User.find({ role: 'student' })
-        .select('_id name email avatar')
+        .select(showEmail ? '_id name email avatar' : '_id name avatar')
         .sort({ name: 1 });
 
     if (!students || students.length === 0) {
@@ -338,7 +350,7 @@ const getStudentsRatings = asyncHandler(async (req, res) => {
                 student: {
                     _id: student._id,
                     name: student.name,
-                    email: student.email,
+                    ...(showEmail ? { email: student.email } : {}),
                     avatar: student.avatar
                 },
                 submissionScore: scores.submissionScore,
@@ -443,18 +455,25 @@ const getNotifications = asyncHandler(async (req, res) => {
 
     } else if (userRole === 'teacher' || userRole === 'admin') {
         // O'qituvchi uchun: yangi topshirilgan submissions
-        // O'qituvchining kurslarini topish
-        const courses = await Course.find({ teacher: userId }).select('_id');
-        const courseIds = courses.map(c => c._id);
+        // Admin — barcha darslar; o'qituvchi — faqat o'z kurslaridagi darslar.
+        // Filtr so'rovning o'zida (limit'dan oldin) qo'llanadi
+        const subFilter = { status: { $in: ['submitted', 'in_review'] } };
+        let hasLessons = true;
 
-        if (courseIds.length > 0) {
-            const submissions = await Submission.find({
-                status: { $in: ['submitted', 'in_review'] }
-            })
+        if (userRole === 'teacher') {
+            const courseIds = await Course.find({ teacher: userId }).distinct('_id');
+            const lessonIds = courseIds.length > 0
+                ? await Lesson.find({ course: { $in: courseIds } }).distinct('_id')
+                : [];
+            subFilter.lesson = { $in: lessonIds };
+            hasLessons = lessonIds.length > 0;
+        }
+
+        if (hasLessons) {
+            const submissions = await Submission.find(subFilter)
             .populate({
                 path: 'lesson',
                 select: 'title course',
-                match: { course: { $in: courseIds } },
                 populate: {
                     path: 'course',
                     select: 'title'
@@ -465,7 +484,6 @@ const getNotifications = asyncHandler(async (req, res) => {
             .limit(50);
 
             notifications = submissions
-                .filter(sub => sub.lesson !== null)
                 .map(sub => ({
                     id: sub._id,
                     type: 'submission',
@@ -609,7 +627,8 @@ const updateUserPasswordByAdmin = asyncHandler(async (req, res) => {
     }
 
     user.password = newPassword.trim();
-    await user.save();
+    // Faqat o'zgargan maydonlar tekshiriladi — eski hujjatlarda (phone/age yo'q) save() yiqilmasin
+    await user.save({ validateModifiedOnly: true });
 
     res.status(200).json({
         message: 'Parol muvaffaqiyatli o\'zgartirildi.',
@@ -617,4 +636,4 @@ const updateUserPasswordByAdmin = asyncHandler(async (req, res) => {
     });
 });
 
-module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores, getAllUsers, updateUserPasswordByAdmin };
+module.exports = { getUserProfile, updateUserProfile, getUserStatistics, getStudentsRatings, getNotifications, getMyScores, getAllUsers, updateUserPasswordByAdmin, computeScores };

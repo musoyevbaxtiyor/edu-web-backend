@@ -1,12 +1,23 @@
 const asyncHandler = require('express-async-handler');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 const PracticeTask = require('../models/practiceTaskModel');
 const PracticeSubmission = require('../models/practiceSubmissionModel');
+const { resolveUpload, sendUpload } = require('../utils/uploads');
 
 const CATEGORIES = PracticeTask.PRACTICE_CATEGORIES;
 const LEVELS = PracticeTask.PRACTICE_LEVELS;
 
 const isStaff = (user) => user.role === 'teacher' || user.role === 'admin';
+
+const isHttpUrl = (value) => {
+    try {
+        return ['http:', 'https:'].includes(new URL(value).protocol);
+    } catch {
+        return false;
+    }
+};
 
 /* ============================================================
    O'QUVCHI TOMONI
@@ -94,6 +105,7 @@ const getTasks = asyncHandler(async (req, res) => {
                       feedback: s.feedback,
                       submissionLink: s.submissionLink,
                       submissionFile: s.submissionFile,
+                      submissionFileName: s.submissionFileName,
                       submissionComment: s.submissionComment,
                       updatedAt: s.updatedAt,
                   }
@@ -109,20 +121,31 @@ const getTasks = asyncHandler(async (req, res) => {
 // @access  Private (Student)
 const submitTask = asyncHandler(async (req, res) => {
     const { taskId, submissionLink, submissionComment } = req.body;
+    // Xato bo'lsa, multer saqlagan keraksiz faylni o'chiramiz
+    const discardFile = () => { if (req.file) fs.unlink(req.file.path, () => {}); };
 
     if (!taskId || !mongoose.Types.ObjectId.isValid(taskId)) {
+        discardFile();
         res.status(400);
         throw new Error('Task IDsi kiritilishi shart.');
     }
 
     const task = await PracticeTask.findById(taskId);
     if (!task || !task.isActive) {
+        discardFile();
         res.status(404);
         throw new Error('Task topilmadi yoki faol emas.');
     }
 
     const link = (submissionLink || '').trim();
+    // Faqat http(s) havolalar — javascript: va boshqa sxemalar rad etiladi
+    if (link && !isHttpUrl(link)) {
+        discardFile();
+        res.status(400);
+        throw new Error("Havola http:// yoki https:// bilan boshlanishi kerak.");
+    }
     const file = req.file ? `/uploads/practice/${req.file.filename}` : '';
+    const fileName = req.file ? req.file.originalname : '';
     const comment = (submissionComment || '').trim();
 
     if (!link && !file) {
@@ -135,8 +158,12 @@ const submitTask = asyncHandler(async (req, res) => {
     if (submission) {
         // Qayta topshirish — bahoni tozalab, holatni "submitted" ga qaytaramiz
         submission.status = 'submitted';
+        submission.submittedAt = new Date();
         submission.submissionLink = link;
-        if (file) submission.submissionFile = file;
+        if (file) {
+            submission.submissionFile = file;
+            submission.submissionFileName = fileName;
+        }
         submission.submissionComment = comment;
         submission.grade = undefined;
         submission.feedback = '';
@@ -150,7 +177,9 @@ const submitTask = asyncHandler(async (req, res) => {
         task: taskId,
         submissionLink: link,
         submissionFile: file,
+        submissionFileName: fileName,
         submissionComment: comment,
+        submittedAt: new Date(),
         status: 'submitted',
     });
 
@@ -223,6 +252,10 @@ const createTask = asyncHandler(async (req, res) => {
         res.status(400);
         throw new Error("Daraja noto'g'ri (easy/middle/pro).");
     }
+    if (resourceUrl && resourceUrl.trim() && !isHttpUrl(resourceUrl.trim())) {
+        res.status(400);
+        throw new Error("Resurs havolasi http:// yoki https:// bilan boshlanishi kerak.");
+    }
 
     // order berilmasa — shu kategoriya+darajadagi oxirgi + 1
     let ord = Number(order);
@@ -260,6 +293,12 @@ const updateTask = asyncHandler(async (req, res) => {
     }
 
     const { title, description, category, level, order, resourceUrl, isActive } = req.body;
+    // Faqat o'zgargan havolani tekshiramiz — eski tasklarni tahrirlash bloklanmasin
+    const newUrl = (resourceUrl || '').trim();
+    if (newUrl && newUrl !== task.resourceUrl && !isHttpUrl(newUrl)) {
+        res.status(400);
+        throw new Error("Resurs havolasi http:// yoki https:// bilan boshlanishi kerak.");
+    }
     if (title !== undefined) task.title = title.trim();
     if (description !== undefined) task.description = (description || '').trim();
     if (resourceUrl !== undefined) task.resourceUrl = (resourceUrl || '').trim();
@@ -310,7 +349,7 @@ const getManageSubmissions = asyncHandler(async (req, res) => {
     const submissions = await PracticeSubmission.find(query)
         .populate('student', 'name email')
         .populate('task', 'title category level order')
-        .sort('-createdAt')
+        .sort({ submittedAt: -1, createdAt: -1 })
         .lean();
 
     res.status(200).json({ success: true, submissions, count: submissions.length });
@@ -361,7 +400,40 @@ const reviewSubmission = asyncHandler(async (req, res) => {
     });
 });
 
+// @desc    Amaliy topshiriq faylini yuklab olish (ZIP va boshqalar — token bilan)
+// @route   GET /api/practice/submissions/:id/file
+// @access  Private (Admin — hammasi, Teacher — o'z tasklari, Student — o'z topshirig'i)
+const getSubmissionFile = asyncHandler(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        res.status(404);
+        throw new Error('Topshiriq topilmadi.');
+    }
+    const submission = await PracticeSubmission.findById(req.params.id).populate('task', 'createdBy');
+    if (!submission || !submission.submissionFile) {
+        res.status(404);
+        throw new Error('Topshiriq yoki fayl topilmadi.');
+    }
+
+    const userId = req.user._id.toString();
+    const allowed =
+        req.user.role === 'admin' ||
+        (req.user.role === 'teacher' && submission.task?.createdBy?.toString() === userId) ||
+        submission.student.toString() === userId;
+    if (!allowed) {
+        res.status(403);
+        throw new Error("Ushbu faylni yuklab olish huquqingiz yo'q.");
+    }
+
+    const filePath = resolveUpload('practice', submission.submissionFile);
+    if (!filePath) {
+        res.status(404);
+        throw new Error("Fayl serverda topilmadi (server qayta ishga tushganda o'chib ketgan bo'lishi mumkin). O'quvchidan qayta yuklashni so'rang.");
+    }
+    sendUpload(res, filePath, submission.submissionFileName || path.basename(filePath));
+});
+
 module.exports = {
+    getSubmissionFile,
     getOverview,
     getTasks,
     submitTask,

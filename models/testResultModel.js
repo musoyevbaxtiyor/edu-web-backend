@@ -44,7 +44,8 @@ const testResultSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Har bir student bir testni faqat bir marta yechishi kerak (yoki ko'p marta yechsa ham, faqat oxirgisi saqlanadi)
+// Har bir student uchun bitta natija: faqat birinchi urinish saqlanadi va ballga hisoblanadi
+// (qayta urinishlar natijani o'zgartirmaydi — testController.checkTestAnswer)
 testResultSchema.index({ student: 1, test: 1 }, { unique: true });
 
 const TestResult = mongoose.model('TestResult', testResultSchema);

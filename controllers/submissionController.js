@@ -5,8 +5,36 @@ const fs = require('fs');
 const Submission = require('../models/submissionModel');
 const Progress = require('../models/progressModel'); // Progress modelini import qilish
 const Course = require('../models/courseModel'); // Kurs modelini import qilish shart
+const Lesson = require('../models/lessonModel');
+const Enrollment = require('../models/EnrollmentModel');
+const mongoose = require('mongoose');
+const { resolveUpload, sendUpload } = require('../utils/uploads');
 
-const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
+// Tekshiruvchi uchun topshiriqlar: admin — barchasi, o'qituvchi — faqat o'z kurslari darslari bo'yicha.
+// O'qituvchining kursi bo'lmasa null qaytaradi.
+const findReviewerSubmissions = async (user, filter = {}) => {
+    const query = { ...filter };
+    if (user.role !== 'admin') {
+        const courses = await Course.find({ teacher: user._id }).select('_id');
+        if (courses.length === 0) return null;
+        const lessons = await Lesson.find({ course: { $in: courses.map((c) => c._id) } }).select('_id');
+        query.lesson = { $in: lessons.map((l) => l._id) };
+    }
+    return Submission.find(query)
+        .populate('lesson', 'title course order')
+        .populate('user', 'name email')
+        .sort({ submittedAt: -1, createdAt: -1 });
+};
+
+// Dars bo'yicha tekshirish huquqi: admin — hammasi, o'qituvchi — faqat o'z kursi
+const canReviewLesson = async (user, lessonId) => {
+    if (user.role === 'admin') return true;
+    const lesson = await Lesson.findById(lessonId).populate('course', 'teacher');
+    return !!lesson?.course?.teacher && lesson.course.teacher.toString() === user._id.toString();
+};
+
+// Bitta topshiriq uchun beriladigan coinlarning yuqori chegarasi
+const MAX_COINS = 1000;
 // ...
 // Vazifa: POST /api/submissions
 // const createSubmission = asyncHandler(async (req, res) => {
@@ -75,71 +103,88 @@ const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploa
 // ------------------------------------------------------------
 // Vazifa: POST /api/submissions
 const createSubmission = asyncHandler(async (req, res) => {
-
-    console.log("Fayl:", req.file);
-    console.log("Body:", req.body);
-
-
-
-    // const userId = req.user.id; 
-    
 // 🔥 TO'G'RILASH: req.body mavjudligini kafolatlang
     if (!req.body) {
          res.status(400);
          throw new Error("So'rovda ma'lumotlar mavjud emas (req.body undefined).");
     }
 
-    const userId = req.user.id; 
-    
+    const userId = req.user.id;
+
     // Matnli maydonlarni to'g'ri olish
     // req.body dan 'lessonId', 'courseId', 'submissionComment' ni oling
-    const { lessonId, courseId, submissionComment } = req.body; // 🔥 Xato bo'lgan qator
+    const { lessonId, submissionComment } = req.body;
 
     // Fayl manzilini olish
     const submissionUrl = req.file ? `/uploads/submissions/${req.file.filename}` : null;
-    
-    if (!lessonId || !courseId || !submissionUrl) {
-        // Multer faylni yuklagan bo'lsa ham, keyingi tekshiruv 400 qaytaradi
-        res.status(400);
-        throw new Error("Dars IDsi, Kurs IDsi va fayl kiritilishi shart.");
+
+    // Xato bo'lsa, multer saqlagan keraksiz faylni o'chiramiz
+    const reject = (status, message) => {
+        if (req.file) fs.unlink(req.file.path, () => {});
+        res.status(status);
+        throw new Error(message);
+    };
+
+    if (!lessonId || !submissionUrl) {
+        reject(400, "Dars IDsi va fayl kiritilishi shart.");
+    }
+    if (!mongoose.Types.ObjectId.isValid(lessonId)) {
+        reject(400, "Noto'g'ri dars ID formati.");
+    }
+
+    // Kurs IDsi mijozdan emas, darsning o'zidan olinadi
+    const lesson = await Lesson.findById(lessonId).select('course order');
+    if (!lesson) {
+        reject(404, 'Dars topilmadi.');
+    }
+    if (!(await Enrollment.exists({ student: userId, course: lesson.course }))) {
+        reject(403, 'Siz ushbu kursga yozilmagansiz.');
+    }
+
+    // Qulf tekshiruvi (progressController bilan bir xil): progress bo'lmasa, oldingi dars tugatilgan bo'lishi kerak
+    const existingProgress = await Progress.findOne({ user: userId, lesson: lesson._id }).select('status');
+    if (!existingProgress) {
+        const prevLesson = await Lesson.findOne({ course: lesson.course, order: { $lt: lesson.order } })
+            .sort('-order')
+            .select('_id');
+        if (prevLesson) {
+            const prevProgress = await Progress.findOne({ user: userId, lesson: prevLesson._id }).select('status');
+            if (!prevProgress || prevProgress.status !== 'completed') {
+                reject(403, 'Bu dars hali qulflangan. Avval oldingi darsni yakunlang.');
+            }
+        }
     }
 //----------------------------------
     // 1. Yangi topshiriqni yaratish/yangilash
     const submission = await Submission.findOneAndUpdate(
-        { user: userId, lesson: lessonId },
-        { 
+        { user: userId, lesson: lesson._id },
+        {
             submissionUrl: submissionUrl, // 🔥 Yangi maydon
+            submissionFileName: req.file.originalname, // Yuklab olishda asl nom
             submissionComment: submissionComment, // Opsional izoh
-            status: 'submitted' 
+            submittedAt: new Date(), // Qayta topshirilganda ham ro'yxat tepasiga chiqadi
+            status: 'submitted'
         },
         { new: true, upsert: true }
     );
     
-    // 2. PROGRESS STATUSINI YANGILASH (oldingidek qoladi)
-    // ...
     // 2. 🔥 PROGRESS STATUSINI YANGILASH (yoki YARATISH) 🔥
-    const filter = { user: userId, lesson: lessonId, course: courseId };
+    // Tugatilgan dars qayta topshirilsa, 'completed' saqlanadi (keyingi darslar qulflanib qolmasin)
+    if (existingProgress?.status !== 'completed') {
+        await Progress.findOneAndUpdate(
+            { user: userId, lesson: lesson._id },
+            {
+                status: 'submitted',
+                $setOnInsert: { course: lesson.course } // Faqat yangi yozuv yaratilganda
+            },
+            {
+                new: true,
+                upsert: true, // Agar topilmasa yaratadi
+                setDefaultsOnInsert: true // Default qiymatlarni ham ishlatish
+            }
+        );
+    }
 
-    const update = { 
-        status: 'submitted',
-        // Agar yangi yaratilayotgan bo'lsa ham, bu qiymatlar uzatiladi
-        $setOnInsert: { // Faqat yangi yozuv yaratilganda ishlaydigan maydonlar
-             user: userId,
-             lesson: lessonId,
-             course: courseId
-        }
-    };
-
-    const progress = await Progress.findOneAndUpdate(
-        filter,
-        update,
-        { 
-            new: true, 
-            upsert: true, // Agar topilmasa yaratadi
-            setDefaultsOnInsert: true // Default qiymatlarni ham ishlatish
-        }
-    );
-    
     res.status(201).json({
         success: true,
         message: 'Vazifa muvaffaqiyatli topshirildi.',
@@ -207,7 +252,12 @@ const approveSubmission = asyncHandler(async (req, res) => {
 // @access  Private (Teacher/Admin)
 const getSubmissionsByLesson = asyncHandler(async (req, res) => {
     const { lessonId } = req.params;
-    
+
+    if (!(await canReviewLesson(req.user, lessonId))) {
+        res.status(403);
+        throw new Error("Bu dars topshiriqlarini ko'rish huquqingiz yo'q.");
+    }
+
     const submissions = await Submission.find({ lesson: lessonId })
         .populate('user', 'name email') // Kim topshirganini bilish uchun
         .sort('-createdAt'); // Eng yangilarini birinchi ko'rsatish
@@ -223,29 +273,14 @@ const getSubmissionsByLesson = asyncHandler(async (req, res) => {
 // @route   GET /api/submissions/teacher/all
 // @access  Private (Teacher/Admin)
 const getAllSubmissionsForTeacher = asyncHandler(async (req, res) => {
-    const teacherId = req.user.id;
-
-    const courses = await Course.find({ teacher: teacherId }).select('_id');
-    if (courses.length === 0) {
+    const submissions = await findReviewerSubmissions(req.user);
+    if (!submissions) {
         return res.status(200).json({ submissions: [], message: 'Siz hali kurs yaratmagansiz.' });
     }
 
-    const courseIds = courses.map(course => course._id);
-
-    const allSubmissions = await Submission.find({})
-        .populate({
-            path: 'lesson',
-            select: 'title course order',
-            match: { course: { $in: courseIds } }
-        })
-        .populate('user', 'name email')
-        .sort('-createdAt');
-
-    const filteredSubmissions = allSubmissions.filter(sub => sub.lesson !== null);
-
     res.status(200).json({
-        submissions: filteredSubmissions,
-        count: filteredSubmissions.length
+        submissions,
+        count: submissions.length
     });
 });
 
@@ -253,35 +288,15 @@ const getAllSubmissionsForTeacher = asyncHandler(async (req, res) => {
 // @route   GET /api/submissions/teacher/pending
 // @access  Private (Teacher/Admin)
 const getPendingSubmissionsForTeacher = asyncHandler(async (req, res) => {
-    const teacherId = req.user.id;
-    
-    // 1. O'qituvchining barcha kurslarini topish
-    const courses = await Course.find({ teacher: teacherId }).select('_id');
-    
-    if (courses.length === 0) {
+    // Faqat tekshirilmagan vazifalar (admin — barcha kurslar bo'yicha)
+    const submissions = await findReviewerSubmissions(req.user, { status: { $in: ['submitted', 'in_review'] } });
+    if (!submissions) {
         return res.status(200).json({ submissions: [], message: 'Siz hali kurs yaratmagansiz.' });
     }
 
-    const courseIds = courses.map(course => course._id);
-
-    // 2. Ushbu kurslar bo'yicha "submitted" statusdagi barcha topshiriqlarni topish
-    const pendingSubmissions = await Submission.find({
-        status: { $in: ['submitted', 'in_review'] } // Faqat tekshirilmagan vazifalar
-    })
-    .populate({
-        path: 'lesson',
-        select: 'title course order', // Dars nomini, kurs IDsi va tartib raqamini olamiz
-        match: { course: { $in: courseIds } } // Faqat o'qituvchining kurslaridagi darslarni topish
-    })
-    .populate('user', 'name email') // Talaba ma'lumotlarini olish
-    .sort('-createdAt'); // Eng yangi topshiriqlar birinchi kelsin
-
-    // Faqat tegishli kurslarga oid bo'lgan submissionlarni filtrlaymiz (populate.match tufayli)
-    const filteredSubmissions = pendingSubmissions.filter(sub => sub.lesson !== null);
-
-    res.status(200).json({ 
-        submissions: filteredSubmissions,
-        count: filteredSubmissions.length 
+    res.status(200).json({
+        submissions,
+        count: submissions.length
     });
 });
 
@@ -303,6 +318,12 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
     if (!submission) {
         res.status(404);
         throw new Error("Topshiriq yozuvi topilmadi.");
+    }
+
+    // O'qituvchi faqat o'z kursidagi topshiriqlarni baholaydi (admin — hammasini)
+    if (!(await canReviewLesson(req.user, submission.lesson))) {
+        res.status(403);
+        throw new Error("Bu topshiriqni baholash huquqingiz yo'q.");
     }
 
     // 🔥 Progress uchun yangi statusni aniqlash
@@ -330,33 +351,32 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
             submissionUpdate.grade = gradeValue;
         }
         
-        // Coins qo'shish
+        // Coins: submission.coins — shu topshiriq uchun o'quvchiga allaqachon berilgan coinlar.
+        // Qayta tasdiqlashda faqat farq qo'shiladi (coinlar ikki marta berilmaydi).
         if (coins !== undefined && coins !== null) {
-            submissionUpdate.coins = Math.max(0, parseInt(coins) || 0);
-            
-            // 3. User coins'ini yangilash (faqat approved holatida)
-            const User = require('../models/userModel');
-            
-            // Avval user'ni topib, coins maydoni borligini tekshiramiz
-            const user = await User.findById(submission.user).select('coins');
-            
-            if (user) {
-                // Agar coins maydoni yo'q yoki null bo'lsa, uni 0 ga o'rnatamiz
-                if (user.coins === undefined || user.coins === null) {
-                    await User.findByIdAndUpdate(submission.user, {
-                        $set: { coins: 0 }
-                    });
-                }
-                
-                // Endi coins qo'shamiz
-                await User.findByIdAndUpdate(submission.user, {
-                    $inc: { coins: submissionUpdate.coins }
-                });
-            }
+            submissionUpdate.coins = Math.min(MAX_COINS, Math.max(0, parseInt(coins) || 0));
         }
     }
 
-    const updatedSubmission = await Submission.findByIdAndUpdate(submissionId, submissionUpdate, { new: true });
+    const prevCoins = submission.coins || 0;
+    // Atomik yangilash: parallel so'rovlar bir xil coinlarni ikki marta bermasligi uchun
+    // (eski hujjatlarda coins maydoni umuman bo'lmasligi mumkin — null shu holatni ham qamraydi)
+    const updatedSubmission = await Submission.findOneAndUpdate(
+        { _id: submissionId, coins: prevCoins === 0 ? { $in: [0, null] } : prevCoins },
+        submissionUpdate,
+        { new: true }
+    );
+    if (!updatedSubmission) {
+        res.status(409);
+        throw new Error("Topshiriq hozirgina boshqa so'rov bilan yangilandi. Sahifani yangilab, qayta urinib ko'ring.");
+    }
+
+    // 3. User coins'ini yangilash (faqat farq)
+    const coinDelta = (updatedSubmission.coins || 0) - prevCoins;
+    if (coinDelta !== 0) {
+        const User = require('../models/userModel');
+        await User.updateOne({ _id: submission.user }, { $inc: { coins: coinDelta } });
+    }
 
     // 4. PROGRESS STATUSINI YANGILASH
     const progress = await Progress.findOneAndUpdate(
@@ -369,7 +389,7 @@ const handleSubmissionReview = asyncHandler(async (req, res) => {
     );
     
     const message = status === 'approved' 
-        ? `Vazifa muvaffaqiyatli tasdiqlandi. Ball: ${grade || 0}/100, Coins: ${coins || 0}. Talaba keyingi darsga o'tdi.`
+        ? `Vazifa muvaffaqiyatli tasdiqlandi. Ball: ${updatedSubmission.grade ?? 0}/100, Coins: ${updatedSubmission.coins || 0}. Talaba keyingi darsga o'tdi.`
         : 'Vazifa rad etildi. Talaba qayta topshirishi mumkin.';
 
     res.status(200).json({
@@ -426,9 +446,9 @@ const getMySubmission = asyncHandler(async (req, res) => {
     });
 });
 
-// @desc    Vazifa faylini yuklab olish (ZIP va boshqa formatlar uchun, CORS/fetch muammosiz)
+// @desc    Vazifa faylini yuklab olish (ZIP va boshqa formatlar — token bilan, brauzerda ko'rish uchun)
 // @route   GET /api/submissions/file/:submissionId
-// @access  Private (Teacher/Admin)
+// @access  Private (Admin — hammasi, Teacher — o'z kursi, Student — o'z topshirig'i)
 const getSubmissionFile = asyncHandler(async (req, res) => {
     const { submissionId } = req.params;
     const submission = await Submission.findById(submissionId)
@@ -437,23 +457,25 @@ const getSubmissionFile = asyncHandler(async (req, res) => {
         res.status(404);
         throw new Error('Topshiriq yoki fayl topilmadi.');
     }
-    // O'qituvchi faqat o'z kursidagi topshiriqlarni yuklashi mumkin
-    if (submission.lesson && submission.lesson.course && submission.lesson.course.teacher) {
-        const teacherId = submission.lesson.course.teacher.toString();
-        if (req.user.role === 'teacher' && req.user.id !== teacherId) {
-            res.status(403);
-            throw new Error('Ushbu faylni yuklab olish huquqingiz yo\'q.');
-        }
+
+    const { role } = req.user;
+    const userId = req.user._id.toString();
+    const courseTeacher = submission.lesson?.course?.teacher?.toString();
+    const allowed =
+        role === 'admin' ||
+        (role === 'teacher' && courseTeacher === userId) ||
+        (role === 'student' && submission.user.toString() === userId);
+    if (!allowed) {
+        res.status(403);
+        throw new Error('Ushbu faylni yuklab olish huquqingiz yo\'q.');
     }
-    const filename = path.basename(submission.submissionUrl);
-    const filePath = path.join(UPLOADS_BASE, 'submissions', filename);
-    if (!fs.existsSync(filePath)) {
+
+    const filePath = resolveUpload('submissions', submission.submissionUrl);
+    if (!filePath) {
         res.status(404);
-        throw new Error('Fayl diskda topilmadi.');
+        throw new Error('Fayl serverda topilmadi (server qayta ishga tushganda o\'chib ketgan bo\'lishi mumkin). O\'quvchidan qayta yuklashni so\'rang.');
     }
-    const safeName = filename || 'vazifa-fayl';
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName.replace(/"/g, '\\"')}"`);
-    res.sendFile(filePath);
+    sendUpload(res, filePath, submission.submissionFileName || path.basename(filePath));
 });
 
 module.exports = {

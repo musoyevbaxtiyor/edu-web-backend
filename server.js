@@ -7,7 +7,7 @@ const fs = require('fs');
 const connectDB = require('./config/db'); // DB ulanish
 
 // Uploads papka: production'da UPLOAD_DIR ga persistent disk mount qiling (Render Disk)
-const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, 'uploads');
+const { UPLOADS_BASE } = require('./utils/uploads');
 try {
     fs.mkdirSync(path.join(UPLOADS_BASE, 'submissions'), { recursive: true });
     fs.mkdirSync(path.join(UPLOADS_BASE, 'practice'), { recursive: true });
@@ -31,6 +31,9 @@ const PORT = process.env.PORT || 10000;
 const HOST = '0.0.0.0';
 
 const app = express();
+
+// Render proksi ortida ishlaydi — req.ip haqiqiy mijoz IP'si bo'lishi uchun (login limiti IP bo'yicha)
+app.set('trust proxy', 1);
 
 // 1. DB ga ulanish
 connectDB();
@@ -67,12 +70,22 @@ const corsOptions = {
     },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
+    // Frontend yuklab olingan fayl nomini o'qiy olishi uchun
+    exposedHeaders: ['Content-Disposition'],
 };
 
 app.use(cors(corsOptions));
 
 // 3. Middleware — fayllar UPLOADS_BASE dan (production'da persistent disk)
-app.use('/uploads', express.static(UPLOADS_BASE));
+// Rasm va PDF'dan boshqa fayllar (html, svg, js, zip...) faqat yuklab olinadi —
+// API domenida o'quvchi yuklagan HTML/SVG ishga tushib qolmasligi (XSS) uchun
+const INLINE_UPLOAD_EXT = /\.(jpe?g|png|gif|webp|pdf)$/i;
+app.use('/uploads', express.static(UPLOADS_BASE, {
+    setHeaders: (res, filePath) => {
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        if (!INLINE_UPLOAD_EXT.test(filePath)) res.setHeader('Content-Disposition', 'attachment');
+    },
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -116,5 +129,15 @@ const server = app.listen(PORT, HOST, () => {
 const extendedTimeout = 120000; 
 
 // 🔥 Endi 'server' e'lon qilingan va ishlaydi!
-server.keepAliveTimeout = extendedTimeout; 
+server.keepAliveTimeout = extendedTimeout;
 server.headersTimeout = extendedTimeout;
+
+// Render deploy/restartda SIGTERM yuboradi: botni to'xtatib, HTTP serverni yopamiz
+const shutdown = (signal) => {
+    console.log(`${signal} qabul qilindi — server to'xtatilmoqda...`);
+    try { telegramBot.stop(signal); } catch (_) { /* bot ishlamayotgan bo'lishi mumkin */ }
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 10000).unref();
+};
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));

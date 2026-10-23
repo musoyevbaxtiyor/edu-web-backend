@@ -11,7 +11,7 @@ const notFound = (req, res, next) => {
 // Asosiy xatolik ishlovchisi
 const errorHandler = (err, req, res, next) => {
     // Agar controller res.status() bilan status bermagan bo'lsa, 500 ni ishlatamiz
-    let statusCode = res.statusCode && res.statusCode !== 200 ? res.statusCode : 500;
+    let statusCode = err.statusCode || (res.statusCode && res.statusCode !== 200 ? res.statusCode : 500);
     let message = err.message || 'Serverda kutilmagan xatolik yuz berdi.';
 
     // Mongoose: noto'g'ri ObjectId
@@ -37,11 +37,15 @@ const errorHandler = (err, req, res, next) => {
     if (err.code === 'LIMIT_FILE_SIZE') {
         statusCode = 400;
         message = 'Fayl hajmi juda katta (maksimal 10 MB).';
+    } else if (err.name === 'MulterError') {
+        statusCode = 400;
+        message = `Faylni yuklashda xato: ${err.message}`;
     }
 
     res.status(statusCode).json({
         message,
-        stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
+        // Stack faqat lokal ishlab chiqishda (NODE_ENV=development) — productionda ichki yo'llar oshkor bo'lmasin
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
     });
 };
 

@@ -13,6 +13,7 @@ const {
     deleteTask,
     getManageSubmissions,
     reviewSubmission,
+    getSubmissionFile,
 } = require('../controllers/practiceController');
 
 /* ---------- O'quvchi ---------- */
@@ -25,6 +26,8 @@ router.post('/submit', protect, restrictTo('student'), uploadPracticeFile, submi
 router.get('/manage/tasks', protect, restrictTo('teacher', 'admin'), getManageTasks);
 router.get('/manage/submissions', protect, restrictTo('teacher', 'admin'), getManageSubmissions);
 router.put('/submissions/:id/review', protect, restrictTo('teacher', 'admin'), reviewSubmission);
+// Topshiriq faylini yuklab olish (ruxsat controllerda tekshiriladi)
+router.get('/submissions/:id/file', protect, getSubmissionFile);
 
 router.post('/tasks', protect, restrictTo('teacher', 'admin'), createTask);
 router.put('/tasks/:id', protect, restrictTo('teacher', 'admin'), updateTask);

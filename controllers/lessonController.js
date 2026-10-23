@@ -1,6 +1,7 @@
 // edu-web-backend/controllers/lessonController.js
 
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 // const Lesson = require('../models/lessonModel');
 const Course = require('../models/courseModel');
 // const Progress = require('../models/progressModel'); 
@@ -41,6 +42,10 @@ const getLessonsByCourse = asyncHandler(async (req, res) => {
     
     if (!isAdmin && !isTeacher && !isEnrolled) {
         res.status(403);
+        // Boshqa o'qituvchining kursi uchun aniq xabar ("kursga yoziling" o'qituvchiga mos emas)
+        if (userRole === 'teacher') {
+            throw new Error('Siz faqat o\'zingiz yaratgan kurslarning darslarini ko\'ra olasiz.');
+        }
         throw new Error('Siz ushbu kurs materiallarini ko\'rishga ruxsatga ega emassiz. Iltimos, kursga yoziling.');
     }
 // -------------------------------------------
@@ -242,56 +247,41 @@ const getLessonContent = asyncHandler(async (req, res) => {
 
 
 
-// @desc    YANGI: Talaba vazifani topshirishi (Submission)
-// @route   POST /api/lessons/:lessonId/submit
-// @access  Private (Student)
-const submitTask = asyncHandler(async (req, res) => {
-    const { lessonId } = req.params;
-    const { submission } = req.body;
-    const userId = req.user.id;
+// Eslatma: eski POST /api/lessons/:lessonId/submit (submitTask) olib tashlandi —
+// u mavjud bo'lmagan contentType maydonini tekshirgani uchun doim 400 qaytarardi.
+// Vazifalar POST /api/submissions orqali (fayl bilan) topshiriladi.
 
-    if (req.user.role !== 'student') {
-        res.status(403);
-        throw new Error('Faqat talabalar vazifalarni topshirishlari mumkin.');
-    }
-    
-    const lesson = await Lesson.findById(lessonId);
-    if (!lesson || lesson.contentType !== 'task') {
+// Kursdagi keyingi bo'sh tartib raqami: max(order) + 1 (o'chirilgan darslardan keyin ham to'qnashmaydi)
+const getNextLessonOrder = async (courseId) => {
+    const last = await Lesson.findOne({ course: courseId }).sort('-order').select('order').lean();
+    // Eski kasr qiymatlar bo'lsa ham butun son qaytaramiz (createLesson faqat butun son qabul qiladi)
+    return last && last.order ? Math.floor(last.order) + 1 : 1;
+};
+
+// Tartib raqami band bo'lsa aniq xabar beramiz (unique {course, order} indeksi)
+const assertOrderFree = async (res, courseId, order, excludeLessonId) => {
+    const filter = { course: courseId, order };
+    if (excludeLessonId) filter._id = { $ne: excludeLessonId };
+    if (await Lesson.exists(filter)) {
+        const nextOrder = await getNextLessonOrder(courseId);
         res.status(400);
-        throw new Error('Vazifa topilmadi yoki bu dars vazifa emas.');
+        throw new Error(`${order}-tartib raqami bu kursda band. Bo'sh raqam: ${nextOrder}.`);
     }
-    
-    if (!submission || submission.trim() === '') {
-        res.status(400);
-        throw new Error('Topshirish uchun yechim matni kerak.');
-    }
-    
-    // Progressni topish va yangilash (yoki yaratish)
-    const progress = await Progress.findOneAndUpdate(
-        { user: userId, lesson: lessonId },
-        { 
-            status: 'submitted', 
-            submission: submission,
-            submittedAt: Date.now() 
-        },
-        { new: true, upsert: true } // Agar topilmasa yangisini yaratadi
-    );
-
-    res.status(200).json({
-        message: 'Vazifa muvaffaqiyatli topshirildi. O\'qituvchi tekshirishini kuting.',
-        progress,
-    });
-});
-
+};
 
 // @desc    Darsni yangilash
 // @route   PUT /api/lessons/:id
 // @access  Private (Admin/Teacher)
 const updateLesson = asyncHandler(async (req, res) => {
-    // ... (sizning kodingiz) ...
-    const { id } = req.params;
-    const updateData = req.body;
-    
+    // Marshrut parametri :lessonId (routes/lessonRoutes.js)
+    const id = req.params.lessonId;
+    const updateData = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        res.status(400);
+        throw new Error('Noto\'g\'ri dars ID formati.');
+    }
+
     let lesson = await Lesson.findById(id).populate({
         path: 'course',
         select: 'teacher'
@@ -302,7 +292,8 @@ const updateLesson = asyncHandler(async (req, res) => {
         throw new Error('Dars topilmadi.');
     }
 
-    const courseTeacherId = lesson.course.teacher.toString();
+    // Kurs o'chirilgan bo'lsa (yetim dars) faqat admin boshqara oladi
+    const courseTeacherId = lesson.course && lesson.course.teacher ? lesson.course.teacher.toString() : null;
     const isOwner = courseTeacherId === req.user.id;
     const isAdmin = req.user.role === 'admin';
 
@@ -317,6 +308,22 @@ const updateLesson = asyncHandler(async (req, res) => {
         if (updateData[key] !== undefined && updateData[key] !== '') fields[key] = updateData[key];
     }
 
+    // Tartib raqami o'zgarsa, boshqa dars bilan to'qnashmasligini tekshiramiz
+    // (o'zgarmagan eski qiymat qayta tekshirilmaydi — mavjud darslarni tahrirlash buzilmasin)
+    if (fields.order !== undefined && lesson.course) {
+        const newOrder = Number(fields.order);
+        if (newOrder === lesson.order) {
+            fields.order = newOrder;
+        } else {
+            if (!Number.isInteger(newOrder) || newOrder < 1) {
+                res.status(400);
+                throw new Error('Tartib raqami 1 yoki undan katta butun son bo\'lishi kerak.');
+            }
+            fields.order = newOrder;
+            await assertOrderFree(res, lesson.course._id, newOrder, lesson._id);
+        }
+    }
+
     const updatedLesson = await Lesson.findByIdAndUpdate(id, fields, { new: true, runValidators: true });
 
     res.status(200).json({
@@ -329,20 +336,27 @@ const updateLesson = asyncHandler(async (req, res) => {
 // @route   DELETE /api/lessons/:id
 // @access  Private (Admin/Teacher)
 const deleteLesson = asyncHandler(async (req, res) => {
-    // ... (sizning kodingiz) ...
-    const { id } = req.params;
+    // Marshrut parametri :lessonId (routes/lessonRoutes.js)
+    const id = req.params.lessonId;
+
+    // MUHIM: id noto'g'ri bo'lsa deleteMany({ lesson: undefined }) hamma yozuvni o'chirib yubormasligi uchun
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+        res.status(400);
+        throw new Error('Noto\'g\'ri dars ID formati.');
+    }
 
     let lesson = await Lesson.findById(id).populate({
         path: 'course',
-        select: 'teacher' 
+        select: 'teacher'
     });
 
     if (!lesson) {
         res.status(404);
         throw new Error('Dars topilmadi.');
     }
-    
-    const courseTeacherId = lesson.course.teacher.toString();
+
+    // Kurs o'chirilgan bo'lsa (yetim dars) faqat admin o'chira oladi
+    const courseTeacherId = lesson.course && lesson.course.teacher ? lesson.course.teacher.toString() : null;
     const isOwner = courseTeacherId === req.user.id;
     const isAdmin = req.user.role === 'admin';
 
@@ -351,8 +365,8 @@ const deleteLesson = asyncHandler(async (req, res) => {
         throw new Error('Siz faqat o\'zingizning kursingizdagi darslarni o\'chira olasiz.');
     }
 
-    await Submission.deleteMany({ lesson: id });
-    await Progress.deleteMany({ lesson: id });
+    await Submission.deleteMany({ lesson: lesson._id });
+    await Progress.deleteMany({ lesson: lesson._id });
     await lesson.deleteOne();
 
     res.status(200).json({
@@ -368,9 +382,9 @@ const createLesson = asyncHandler(async (req, res) => {
         order,
         videoUrl, 
         documentationUrl, 
-        taskFileUrl, 
-        taskDescription 
-    } = req.body;
+        taskFileUrl,
+        taskDescription
+    } = req.body || {};
 
     const userId = req.user.id; // Kirgan foydalanuvchi ID si
     const userRole = req.user.role; // Kirgan foydalanuvchi roli
@@ -382,6 +396,10 @@ const createLesson = asyncHandler(async (req, res) => {
     }
 
     // 2. Kurs mavjudligini tekshirish
+    if (!mongoose.Types.ObjectId.isValid(course)) {
+        res.status(400);
+        throw new Error('Noto\'g\'ri kurs ID formati.');
+    }
     const existingCourse = await Course.findById(course);
     if (!existingCourse) {
         res.status(404);
@@ -397,9 +415,18 @@ const createLesson = asyncHandler(async (req, res) => {
         throw new Error('Siz faqat o\'zingiz yaratgan kurslarga dars qo\'sha olasiz.');
     }
     
-    // 4. Tartib raqamini avtomatik aniqlash (agar Frontenddan kelmasa)
-    const lessonsCount = await Lesson.countDocuments({ course: course });
-    const finalOrder = order || lessonsCount + 1;
+    // 4. Tartib raqamini aniqlash: kelmasa max(order) + 1, kelsa band emasligini tekshiramiz
+    let finalOrder;
+    if (order === undefined || order === null || order === '') {
+        finalOrder = await getNextLessonOrder(existingCourse._id);
+    } else {
+        finalOrder = Number(order);
+        if (!Number.isInteger(finalOrder) || finalOrder < 1) {
+            res.status(400);
+            throw new Error('Tartib raqami 1 yoki undan katta butun son bo\'lishi kerak.');
+        }
+        await assertOrderFree(res, existingCourse._id, finalOrder);
+    }
 
     // 5. Darsni yaratish va ma'lumotlar bazasiga saqlash
     const lesson = await Lesson.create({
@@ -424,7 +451,6 @@ module.exports = {
     createLesson,
     getLessonsByCourse,
     // getLessonContent,       // MUHIM
-    submitTask,             // YANGI: Vazifani topshirish
     updateLesson,
     deleteLesson
 };

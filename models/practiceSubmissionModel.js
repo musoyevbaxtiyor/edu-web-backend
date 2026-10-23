@@ -23,6 +23,13 @@ const practiceSubmissionSchema = new mongoose.Schema({
         type: String,
         default: '',
     },
+    // Yuklangan faylning asl nomi (masalan "loyiha.zip")
+    submissionFileName: {
+        type: String,
+        default: '',
+    },
+    // Oxirgi marta topshirilgan vaqt (qayta topshirishda yangilanadi)
+    submittedAt: Date,
     // O'quvchining qisqa izohi
     submissionComment: {
         type: String,

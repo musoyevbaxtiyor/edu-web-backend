@@ -2,6 +2,17 @@ const Test = require('../models/testModel');
 const TestResult = require('../models/testResultModel');
 const asyncHandler = require('express-async-handler');
 
+// Javob kalitini faqat o'qituvchi/admin ko'radi
+const canSeeAnswers = (user) => user && (user.role === 'teacher' || user.role === 'admin');
+
+// Talabaga yuboriladigan testdan to'g'ri javob va izohni olib tashlash
+function stripAnswer(test) {
+    const obj = test.toObject ? test.toObject() : { ...test };
+    delete obj.correctAnswer;
+    delete obj.explanation;
+    return obj;
+}
+
 // @desc    Barcha testlarni olish
 // @route   GET /api/tests
 // @access  Private
@@ -21,21 +32,48 @@ const getTests = asyncHandler(async (req, res) => {
     if (isActive !== undefined) {
         query.isActive = isActive === 'true';
     }
-    
+    // Talabalarga faqat faol testlar ko'rsatiladi
+    if (!canSeeAnswers(req.user)) {
+        query.isActive = true;
+    }
+
     if (createdBy) {
         query.createdBy = createdBy;
     }
-    
+
     const tests = await Test.find(query)
-        .populate('createdBy', 'name email')
+        // Muallif emaili faqat o'qituvchi/admin uchun
+        .populate('createdBy', canSeeAnswers(req.user) ? 'name email' : 'name')
         .populate('courseId', 'title')
         .populate('lessonId', 'title')
         .sort({ order: 1, createdAt: -1 });
-    
+
+    if (canSeeAnswers(req.user)) {
+        return res.status(200).json({
+            success: true,
+            count: tests.length,
+            tests
+        });
+    }
+
+    // Talaba: javobsiz + o'zining avvalgi natijasi (javob faqat /check orqali)
+    const results = await TestResult.find({
+        student: req.user._id,
+        test: { $in: tests.map((t) => t._id) }
+    }).select('test isCorrect score').lean();
+    const resultByTest = new Map(results.map((r) => [r.test.toString(), r]));
+
+    const list = tests.map((t) => {
+        const obj = stripAnswer(t);
+        const r = resultByTest.get(t._id.toString());
+        obj.myResult = r ? { isCorrect: r.isCorrect, score: r.score || 0 } : null;
+        return obj;
+    });
+
     res.status(200).json({
         success: true,
-        count: tests.length,
-        tests
+        count: list.length,
+        tests: list
     });
 });
 
@@ -44,7 +82,7 @@ const getTests = asyncHandler(async (req, res) => {
 // @access  Private
 const getTest = asyncHandler(async (req, res) => {
     const test = await Test.findById(req.params.id)
-        .populate('createdBy', 'name email')
+        .populate('createdBy', canSeeAnswers(req.user) ? 'name email' : 'name')
         .populate('courseId', 'title')
         .populate('lessonId', 'title');
     
@@ -54,10 +92,10 @@ const getTest = asyncHandler(async (req, res) => {
             message: 'Test topilmadi'
         });
     }
-    
+
     res.status(200).json({
         success: true,
-        test
+        test: canSeeAnswers(req.user) ? test : stripAnswer(test)
     });
 });
 
@@ -141,7 +179,7 @@ const updateTest = asyncHandler(async (req, res) => {
     if (test.createdBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
         return res.status(403).json({
             success: false,
-            message: 'Siz bu testni yangilash huquqiga egasiz'
+            message: 'Siz bu testni yangilash huquqiga ega emassiz'
         });
     }
     
@@ -178,20 +216,20 @@ const updateTest = asyncHandler(async (req, res) => {
         });
     }
     
-    // Yangilash
+    // Yangilash (yuborilgan bo'sh qiymatlar maydonni tozalaydi)
     test = await Test.findByIdAndUpdate(
         req.params.id,
         {
             title: title || test.title,
             question: question || test.question,
-            code: code !== undefined ? code : test.code,
+            code: code !== undefined ? (code || '') : test.code,
             options: finalOptions,
             correctAnswer: finalCorrectAnswer,
-            explanation: explanation !== undefined ? explanation : test.explanation,
+            explanation: explanation !== undefined ? (explanation || '') : test.explanation,
             difficulty: difficulty || test.difficulty,
-            category: category || test.category,
-            courseId: courseId !== undefined ? courseId : test.courseId,
-            lessonId: lessonId !== undefined ? lessonId : test.lessonId,
+            category: category !== undefined ? (category || 'general') : test.category,
+            courseId: courseId !== undefined ? (courseId || null) : test.courseId,
+            lessonId: lessonId !== undefined ? (lessonId || null) : test.lessonId,
             isActive: isActive !== undefined ? isActive : test.isActive,
             order: order !== undefined ? order : test.order
         },
@@ -225,7 +263,7 @@ const deleteTest = asyncHandler(async (req, res) => {
     if (test.createdBy.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
         return res.status(403).json({
             success: false,
-            message: 'Siz bu testni o\'chirish huquqiga egasiz'
+            message: 'Siz bu testni o\'chirish huquqiga ega emassiz'
         });
     }
     
@@ -241,11 +279,12 @@ const deleteTest = asyncHandler(async (req, res) => {
 // @route   POST /api/tests/:id/check
 // @access  Private
 const checkTestAnswer = asyncHandler(async (req, res) => {
-    const { answerIndex } = req.body;
+    const { answerIndex } = req.body || {};
     const userId = req.user._id;
     const test = await Test.findById(req.params.id);
-    
-    if (!test) {
+
+    // Talaba faol bo'lmagan testga javob bera olmaydi
+    if (!test || (!test.isActive && !canSeeAnswers(req.user))) {
         return res.status(404).json({
             success: false,
             message: 'Test topilmadi'
@@ -259,33 +298,49 @@ const checkTestAnswer = asyncHandler(async (req, res) => {
         });
     }
     
+    if (!Number.isInteger(answerIndex) || answerIndex < 0 || answerIndex >= test.options.length) {
+        return res.status(400).json({
+            success: false,
+            message: 'Javob indeksi noto\'g\'ri'
+        });
+    }
+
     const isCorrect = answerIndex === test.correctAnswer;
-    
+
     // Ball hisoblash (easy: 1, medium: 2, hard: 3)
     const scoreMap = { easy: 1, medium: 2, hard: 3 };
     const score = isCorrect ? scoreMap[test.difficulty] || 1 : 0;
-    
-    // Natijani saqlash yoki yangilash
-    await TestResult.findOneAndUpdate(
-        { student: userId, test: test._id },
-        {
-            student: userId,
-            test: test._id,
-            selectedAnswer: answerIndex,
-            isCorrect: isCorrect,
-            score: score,
-            lesson: test.lessonId || null,
-            course: test.courseId || null
-        },
-        { upsert: true, new: true }
-    );
-    
+
+    // Faqat birinchi urinish saqlanadi va ballga hisoblanadi.
+    // Qayta urinish (javob ochilgandan keyin) natijani o'zgartirmaydi.
+    let previous = await TestResult.findOne({ student: userId, test: test._id }).select('_id');
+    if (!previous) {
+        try {
+            await TestResult.create({
+                student: userId,
+                test: test._id,
+                selectedAnswer: answerIndex,
+                isCorrect: isCorrect,
+                score: score,
+                lesson: test.lessonId || null,
+                course: test.courseId || null
+            });
+        } catch (err) {
+            // Parallel so'rov natijani allaqachon yozgan (unique index)
+            if (err.code !== 11000) throw err;
+            previous = true;
+        }
+    }
+    const firstAttempt = !previous;
+
     res.status(200).json({
         success: true,
         isCorrect,
         correctAnswer: test.correctAnswer,
         explanation: test.explanation,
-        score: score
+        // Shu urinish uchun berilgan ball (qayta urinishda 0)
+        score: firstAttempt ? score : 0,
+        firstAttempt
     });
 });
 

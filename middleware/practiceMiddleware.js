@@ -1,10 +1,11 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { UPLOADS_BASE, decodeOriginalName, safeSegment } = require('../utils/uploads');
 
-// Production (Render): UPLOAD_DIR persistent diskka ishora qiladi
-const UPLOADS_BASE = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
 const PRACTICE_DIR = path.join(UPLOADS_BASE, 'practice');
+
+const ALLOWED_EXT = /^\.(jpe?g|png|gif|webp|svg|pdf|zip|rar|html?|css|js|json|txt|docx)$/;
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -16,9 +17,9 @@ const storage = multer.diskStorage({
         }
     },
     filename: (req, file, cb) => {
-        const ext = path.extname(file.originalname);
-        const userId = req.user ? req.user.id : 'unknown';
-        const taskId = req.body.taskId || 'task';
+        const ext = path.extname(file.originalname).toLowerCase();
+        const userId = safeSegment(req.user && req.user.id, 'user');
+        const taskId = safeSegment(req.body.taskId, 'task');
         cb(null, `${userId}-${taskId}-${Date.now()}${ext}`);
     },
 });
@@ -27,10 +28,11 @@ const upload = multer({
     storage,
     limits: { fileSize: 1024 * 1024 * 10 }, // 10 MB
     fileFilter: (req, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        const ok = /\.(jpe?g|png|gif|webp|svg|pdf|zip|rar|html?|css|js|json|txt|docx)$/.test(ext);
-        if (ok) return cb(null, true);
-        cb(new Error('Faqat rasm, PDF, ZIP, RAR, HTML, CSS, JS, TXT, DOCX fayllariga ruxsat beriladi!'), false);
+        file.originalname = decodeOriginalName(file.originalname);
+        if (ALLOWED_EXT.test(path.extname(file.originalname).toLowerCase())) return cb(null, true);
+        const err = new Error('Faqat rasm, PDF, ZIP, RAR, HTML, CSS, JS, TXT, DOCX fayllariga ruxsat beriladi!');
+        err.statusCode = 400;
+        cb(err, false);
     },
 });
 

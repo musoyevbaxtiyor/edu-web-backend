@@ -24,8 +24,8 @@ router.post('/',
 router.get('/teacher/all', protect, restrictTo('teacher', 'admin'), getAllSubmissionsForTeacher);
 router.get('/teacher/pending', protect, restrictTo('teacher', 'admin'), getPendingSubmissionsForTeacher);
 
-// Vazifa faylini yuklab olish (ZIP va boshqalar — yangi tab ochilmasdan)
-router.get('/file/:submissionId', protect, restrictTo('teacher', 'admin'), getSubmissionFile);
+// Vazifa faylini yuklab olish (ZIP va boshqalar — token bilan; ruxsat controllerda tekshiriladi)
+router.get('/file/:submissionId', protect, getSubmissionFile);
 
 // Vazifani tasdiqlash/baholash
 router.put('/review/:submissionId', protect, restrictTo('teacher', 'admin'), handleSubmissionReview);

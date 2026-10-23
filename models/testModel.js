@@ -31,7 +31,15 @@ const testSchema = mongoose.Schema({
         required: [true, 'To\'g\'ri javob indeksi kiritilishi shart'],
         validate: {
             validator: function(v) {
-                return v >= 0 && v < this.options.length;
+                // Update validatorlarida `this` — hujjat emas, Query. Variantlarni update'dan olamiz
+                let options = this ? this.options : undefined;
+                if (this instanceof mongoose.Query) {
+                    const update = this.getUpdate() || {};
+                    options = update.options || (update.$set && update.$set.options);
+                    // Variantlar yangilanmasa, oraliqni controller tekshiradi
+                    if (!options) return v >= 0;
+                }
+                return v >= 0 && !!options && v < options.length;
             },
             message: 'To\'g\'ri javob indeksi variantlar sonidan kichik bo\'lishi kerak'
         }

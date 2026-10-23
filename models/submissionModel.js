@@ -19,7 +19,11 @@ const submissionSchema = new mongoose.Schema({
         type: String,
         required: [true, "Topshiriq matni yoki fayl manziliga ega bo'lishi shart."]
     },
-    
+    // Yuklangan faylning asl nomi (masalan "loyiha.zip") — yuklab olishda ishlatiladi
+    submissionFileName: String,
+    // Oxirgi marta topshirilgan vaqt (qayta topshirishda yangilanadi)
+    submittedAt: Date,
+
     // Vazifa matni o'rniga, agar talaba qisqa izoh yozsa (opsional)
     submissionComment: String,
     // Topshiriq statusi (Tekshirish/Tasdiqlash mantiqi uchun)

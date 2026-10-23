@@ -17,6 +17,23 @@ function stripAnswers(exam) {
     };
 }
 
+// Savollarni tekshirish: matn, 2-6 variant va to'g'ri javob indeksi oraliqda. Xato bo'lsa — xabar
+function questionsError(questions) {
+    if (!Array.isArray(questions) || questions.length === 0) {
+        return 'Kamida 1 ta savol kiritilishi shart.';
+    }
+    for (const [i, q] of questions.entries()) {
+        if (!q || !q.question || !Array.isArray(q.options) || q.options.length < 2) {
+            return `${i + 1}-savolda matn va kamida 2 ta variant bo'lishi kerak.`;
+        }
+        const ca = Number(q.correctAnswer);
+        if (q.correctAnswer === undefined || q.correctAnswer === null || !Number.isInteger(ca) || ca < 0 || ca >= q.options.length) {
+            return `${i + 1}-savolda to'g'ri javob indeksi noto'g'ri.`;
+        }
+    }
+    return null;
+}
+
 // @desc    Imtihonlar ro'yxati (metama'lumot, savolsiz)
 // @route   GET /api/exams?level=&category=&mine=true
 // @access  Private
@@ -94,15 +111,10 @@ const createExam = asyncHandler(async (req, res) => {
     }
 
     // Har bir savolni tekshirish
-    for (const [i, q] of questions.entries()) {
-        if (!q.question || !Array.isArray(q.options) || q.options.length < 2) {
-            res.status(400);
-            throw new Error(`${i + 1}-savolda matn va kamida 2 ta variant bo'lishi kerak.`);
-        }
-        if (q.correctAnswer === undefined || q.correctAnswer < 0 || q.correctAnswer >= q.options.length) {
-            res.status(400);
-            throw new Error(`${i + 1}-savolda to'g'ri javob indeksi noto'g'ri.`);
-        }
+    const qError = questionsError(questions);
+    if (qError) {
+        res.status(400);
+        throw new Error(qError);
     }
 
     const exam = await Exam.create({
@@ -132,6 +144,15 @@ const updateExam = asyncHandler(async (req, res) => {
     if (req.user.role !== 'admin' && exam.createdBy.toString() !== req.user._id.toString()) {
         res.status(403);
         throw new Error('Siz faqat o\'zingiz yaratgan imtihonni tahrirlashingiz mumkin.');
+    }
+
+    // Savollar yuborilgan bo'lsa — yaratishdagidek tekshiramiz (to'g'ri javob indeksi oraliqda)
+    if (req.body.questions !== undefined) {
+        const qError = questionsError(req.body.questions);
+        if (qError) {
+            res.status(400);
+            throw new Error(qError);
+        }
     }
 
     const fields = ['title', 'description', 'category', 'level', 'questions', 'durationMinutes', 'passScore', 'isActive'];
@@ -168,32 +189,50 @@ const deleteExam = asyncHandler(async (req, res) => {
 // @access  Private
 const submitExam = asyncHandler(async (req, res) => {
     const { answers } = req.body; // [idx, idx, ...]
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        res.status(400);
+        throw new Error('Noto\'g\'ri imtihon ID formati.');
+    }
     const exam = await Exam.findById(req.params.id);
     if (!exam) {
         res.status(404);
         throw new Error('Imtihon topilmadi.');
     }
 
-    const questions = exam.questions || [];
-    const given = Array.isArray(answers) ? answers : [];
+    // Faol bo'lmagan imtihonni faqat egasi/admin topshira oladi (sinab ko'rish uchun)
+    const isOwner = exam.createdBy && exam.createdBy.toString() === req.user._id.toString();
+    if (!exam.isActive && !isOwner && req.user.role !== 'admin') {
+        res.status(403);
+        throw new Error('Bu imtihon hozircha faol emas.');
+    }
 
+    const questions = exam.questions || [];
+    const raw = Array.isArray(answers) ? answers : [];
+    // Har bir javob: variant indeksi yoki -1 (javob berilmagan / noto'g'ri qiymat)
+    const given = questions.map((q, i) => {
+        const a = raw[i];
+        return Number.isInteger(a) && a >= 0 && a < (q.options || []).length ? a : -1;
+    });
+
+    // Javob kaliti qaytarilmaydi (qayta topshirishda eng yaxshi natija hisoblanadi):
+    // faqat har bir savol to'g'ri/noto'g'riligi, izoh esa faqat to'g'ri javob berilgan savolga
     let correctCount = 0;
     const review = questions.map((q, i) => {
-        const your = given[i] != null ? given[i] : -1;
+        const your = given[i];
         const isCorrect = your === q.correctAnswer;
         if (isCorrect) correctCount += 1;
         return {
             questionIndex: i,
             yourAnswer: your,
-            correctAnswer: q.correctAnswer,
             isCorrect,
-            explanation: q.explanation || '',
+            explanation: isCorrect ? (q.explanation || '') : '',
         };
     });
 
     const totalQuestions = questions.length;
     const scorePercent = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
-    const passed = scorePercent >= (exam.passScore || 60);
+    const passScore = exam.passScore ?? 60;
+    const passed = scorePercent >= passScore;
 
     await ExamResult.create({
         student: req.user._id,
@@ -211,7 +250,7 @@ const submitExam = asyncHandler(async (req, res) => {
         totalQuestions,
         scorePercent,
         passed,
-        passScore: exam.passScore,
+        passScore,
         review,
     });
 });
